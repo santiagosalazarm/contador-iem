@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Informe de horas</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+<main>
+  <header class="top">
+    <div>
+      <div class="small muted">Ideas en Movimiento® · Informe de horas</div>
+      <h1 id="title">Cargando…</h1>
+    </div>
+    <button class="secondary no-print" onclick="print()">Descargar PDF</button>
+  </header>
+
+  <div id="err" class="alert error hidden">Este enlace no es válido o expiró.</div>
+
+  <section id="summary" class="card hidden">
+    <h2>Resumen</h2>
+    <div class="bar" id="bar"><span></span></div>
+    <div class="row small" id="nums"></div>
+    <p id="cta" class="no-print hidden" style="margin-top:14px"></p>
+  </section>
+
+  <section id="detail" class="card hidden">
+    <h2>Tareas realizadas</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Fecha</th><th>Tarea y entregable</th><th>Equipo</th><th class="num">Tiempo real</th><th class="num">Facturado</th></tr></thead>
+        <tbody id="rows"></tbody>
+        <tfoot><tr><th colspan="3">Total</th><th class="num" id="totRaw"></th><th class="num" id="totBilled"></th></tr></tfoot>
+      </table>
+    </div>
+    <p class="small muted" id="rule"></p>
+  </section>
+
+  <section id="extras" class="card hidden">
+    <h2>Horas adicionales y ajustes</h2>
+    <div id="extrasList" class="small"></div>
+  </section>
+</main>
+<script>
+const cfg = window.CONTADOR_CONFIG;
+const sb = supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtHM = (min) => { const m = Math.max(0, Math.round(min)); const h = Math.floor(m / 60), r = m % 60;
+  return h ? (r ? `${h} h ${r} min` : `${h} h`) : `${r} min`; };
+const fmtDur = (s) => fmtHM(Math.round(s / 60));
+const fmtDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
+
+(async () => {
+  const token = new URLSearchParams(location.search).get('t');
+  const { data: r, error } = await sb.rpc('report_by_token', { p_token: token });
+  if (error || !r) { $('err').classList.remove('hidden'); $('title').textContent = 'Informe no disponible'; return; }
+
+  const month = new Date(r.starts_on + 'T12:00:00').toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+  $('title').textContent = `${r.client} · ${month}`;
+  document.title = `Informe ${r.client} ${month}`;
+
+  const b = r.balance;
+  const consumed = b.available - Math.max(0, b.remaining);
+  $('bar').querySelector('span').style.width = Math.min(100, consumed / b.available * 100) + '%';
+  if (b.remaining <= 0) $('bar').classList.add('danger'); else if (b.remaining <= 120) $('bar').classList.add('warn');
+  $('nums').innerHTML = `<div>Disponibles<br><strong>${fmtHM(b.available)}</strong></div>
+    <div>Usadas<br><strong>${fmtHM(consumed)}</strong></div>
+    <div>Restantes<br><strong>${fmtHM(Math.max(0, b.remaining))}</strong></div>`;
+  if (r.status !== 'closed' && b.remaining <= 120) {
+    $('cta').innerHTML = `<a class="button" href="ampliar.html?t=${encodeURIComponent(r.client_token)}">Ampliar horas de este mes</a>`;
+    $('cta').classList.remove('hidden');
+  }
+  $('summary').classList.remove('hidden');
+
+  let raw = 0, billed = 0;
+  $('rows').innerHTML = r.tasks.map(t => {
+    raw += t.raw_seconds; billed += t.billed_minutes;
+    return `<tr><td>${fmtDate(t.date)}</td>
+      <td><strong>${esc(t.title)}</strong>${t.category ? ` <span class="pill">${esc(t.category)}</span>` : ''}
+        ${t.deliverable ? `<div class="muted">${esc(t.deliverable)}</div>` : t.status !== 'finished' ? '<div class="muted">En curso</div>' : ''}</td>
+      <td>${esc(t.member)}</td><td class="num">${fmtDur(t.raw_seconds)}</td><td class="num">${fmtHM(t.billed_minutes)}</td></tr>`;
+  }).join('') || '<tr><td colspan="5" class="muted">Aún no hay tareas este mes.</td></tr>';
+  $('totRaw').textContent = fmtDur(raw); $('totBilled').textContent = fmtHM(billed);
+  $('rule').textContent = `Cada tarea se factura en bloques de ${r.block_minutes} minutos hacia arriba; las pausas no cuentan. Ninguna tarea se factura por encima de las horas disponibles.`;
+  $('detail').classList.remove('hidden');
+
+  const items = [
+    ...r.extensions.map(e => `+ ${fmtHM(e.minutes)} adicionales (${r.currency} ${Number(e.amount).toLocaleString('en-US')}) · ${new Date(e.at).toLocaleDateString('es-CO')}`),
+    ...r.adjustments.map(a => `${a.minutes > 0 ? '+' : '−'} ${fmtHM(Math.abs(a.minutes))} ajuste: ${esc(a.reason)}`),
+  ];
+  if (items.length) { $('extrasList').innerHTML = items.map(i => `<div class="client">${i}</div>`).join(''); $('extras').classList.remove('hidden'); }
+})();
+</script>
+</body>
+</html>

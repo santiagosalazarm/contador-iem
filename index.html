@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contador de horas</title>
+  <meta name="theme-color" content="#2f5d50">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+<main>
+  <header class="top">
+    <h1>Contador de horas · IeM</h1>
+    <button id="logout" class="secondary hidden">Salir</button>
+  </header>
+
+  <div id="msg" class="alert error hidden"></div>
+
+  <!-- Login -->
+  <section id="login" class="card hidden">
+    <h2>Entrar</h2>
+    <p class="muted small">Te enviamos un enlace a tu correo del equipo.</p>
+    <form id="loginForm">
+      <label for="email">Correo</label>
+      <input id="email" type="email" required autocomplete="email">
+      <div style="margin-top:14px"><button type="submit">Enviar enlace</button></div>
+    </form>
+    <p id="loginSent" class="small hidden">Revisa tu correo y abre el enlace en este mismo dispositivo.</p>
+  </section>
+
+  <section id="app" class="hidden">
+    <!-- ¿Sigues trabajando? -->
+    <div id="reminder" class="alert hidden">
+      <strong>¿Sigues trabajando en "<span id="reminderTitle"></span>"?</strong>
+      <div class="row" style="margin-top:10px">
+        <button id="stillYes">Sí, sigo</button>
+      </div>
+      <p class="small muted">Si no confirmas en 15 min, se pausa sola desde la hora del aviso.</p>
+    </div>
+
+    <!-- Tarea en curso -->
+    <section id="active" class="card hidden">
+      <h2>En curso</h2>
+      <div><strong id="activeTitle"></strong> <span class="pill" id="activeClient"></span></div>
+      <div class="clock" id="clock">00:00:00</div>
+      <div class="small muted">Se facturará: <strong id="billedPreview"></strong> (bloques de <span id="blockSize"></span> min)</div>
+
+      <div id="activeButtons" class="row" style="margin-top:14px">
+        <button id="btnPause" class="warn">Pausar</button>
+        <button id="btnFinish">Terminar</button>
+      </div>
+
+      <form id="pauseForm" class="hidden">
+        <label for="pauseReason">¿Por qué pausas?</label>
+        <select id="pauseReason" required>
+          <option value="">Elige…</option>
+          <option>Almuerzo / descanso</option>
+          <option>Reunión interna</option>
+          <option>Cambio a otro cliente</option>
+          <option>Esperando insumos del cliente</option>
+          <option>Fin de jornada</option>
+          <option>Otro</option>
+        </select>
+        <div class="row" style="margin-top:12px">
+          <button type="submit" class="warn">Confirmar pausa</button>
+          <button type="button" class="secondary" data-cancel>Cancelar</button>
+        </div>
+      </form>
+
+      <form id="finishForm" class="hidden">
+        <label for="deliverable">¿Qué se entregó? (lo verá el cliente en el informe)</label>
+        <textarea id="deliverable" required></textarea>
+        <div class="row" style="margin-top:12px">
+          <button type="submit">Terminar tarea</button>
+          <button type="button" class="secondary" data-cancel>Cancelar</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Pausadas -->
+    <section id="paused" class="card hidden">
+      <h2>En pausa</h2>
+      <div id="pausedList"></div>
+    </section>
+
+    <!-- Nueva tarea -->
+    <section class="card">
+      <h2>Nueva tarea</h2>
+      <form id="startForm">
+        <label for="client">Cliente</label>
+        <select id="client" required></select>
+        <label for="title">Tarea</label>
+        <input id="title" required placeholder="Ej.: Banners Black Friday para Instagram">
+        <label for="category">Tipo</label>
+        <select id="category"></select>
+        <label for="ghlUrl">Enlace a la tarea en GHL Projects (opcional)</label>
+        <input id="ghlUrl" type="url" placeholder="https://…">
+        <div style="margin-top:14px"><button type="submit" id="btnStart">Iniciar</button></div>
+      </form>
+    </section>
+
+    <!-- Saldos -->
+    <section class="card">
+      <h2>Saldo del mes</h2>
+      <div id="clients"></div>
+    </section>
+  </section>
+</main>
+
+<script>
+const cfg = window.CONTADOR_CONFIG;
+const sb = supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+const $ = (id) => document.getElementById(id);
+let state = null, tickBase = null;
+
+const fmtHM = (min) => { const m = Math.max(0, Math.round(min)); const h = Math.floor(m / 60), r = m % 60;
+  return h ? (r ? `${h} h ${r} min` : `${h} h`) : `${r} min`; };
+const fmtClock = (s) => [Math.floor(s / 3600), Math.floor(s % 3600 / 60), s % 60].map(n => String(n).padStart(2, '0')).join(':');
+const billed = (s, block) => s <= 0 ? 0 : Math.ceil(s / (block * 60)) * block;
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function showError(e) {
+  const raw = e?.message || String(e);
+  const text = raw.replace(/^[A-Z_]+: /, '');
+  $('msg').textContent = raw.startsWith('SIN_SALDO') ? '⛔ ' + text + '. El cliente ya recibió la invitación a ampliar.' : text;
+  $('msg').classList.remove('hidden');
+  setTimeout(() => $('msg').classList.add('hidden'), 8000);
+}
+async function rpc(fn, args) {
+  const { data, error } = await sb.rpc(fn, args);
+  if (error) { showError(error); throw error; }
+  return data;
+}
+
+async function load() {
+  state = await rpc('dashboard');
+  render();
+}
+
+function render() {
+  const clientsById = Object.fromEntries(state.clients.map(c => [c.client_id, c]));
+
+  // Selector de cliente y saldos
+  const sel = $('client'); const cur = sel.value;
+  sel.innerHTML = state.clients.map(c =>
+    `<option value="${c.client_id}" ${c.status !== 'open' || c.remaining <= 0 ? 'disabled' : ''}>${esc(c.name)}${c.status !== 'open' ? ' — sin horas' : ''}</option>`).join('');
+  if (cur) sel.value = cur;
+  $('clients').innerHTML = state.clients.map(c => {
+    const pct = c.available ? Math.min(100, c.consumed / c.available * 100) : 100;
+    const cls = c.remaining <= 0 ? 'danger' : c.remaining <= 120 ? 'warn' : '';
+    return `<div class="client">
+      <div class="row" style="justify-content:space-between"><strong>${esc(c.name)}</strong>
+        <span class="pill ${c.status === 'open' ? '' : 'stop'}">${c.status === 'open' ? 'activo' : 'agotado'}</span></div>
+      <div class="bar ${cls}"><span style="width:${pct}%"></span></div>
+      <div class="small muted">${fmtHM(c.consumed)} de ${fmtHM(c.available)} · quedan <strong>${fmtHM(c.remaining)}</strong>
+        ${state.member.role === 'admin' ? ` · <a href="informe.html?t=${c.report_token}" target="_blank">informe</a>` : ''}</div>
+    </div>`;
+  }).join('') || '<p class="muted">No hay clientes activos.</p>';
+
+  // Tarea en curso
+  const running = state.tasks.find(t => t.status === 'running');
+  $('active').classList.toggle('hidden', !running);
+  $('reminder').classList.toggle('hidden', !(running && running.reminder));
+  if (running) {
+    const c = clientsById[running.client_id];
+    $('activeTitle').textContent = running.title;
+    $('activeClient').textContent = c?.name ?? '';
+    $('blockSize').textContent = c?.block_minutes ?? 15;
+    $('reminderTitle').textContent = running.title;
+    // segundos acumulados antes del segmento actual + segmento actual en vivo
+    const segStart = new Date(running.running_since).getTime();
+    const prev = running.seconds - Math.floor((Date.now() - segStart) / 1000);
+    tickBase = { prev: Math.max(0, prev), segStart, block: c?.block_minutes ?? 15, id: running.id };
+  } else tickBase = null;
+  tick();
+
+  // Pausadas
+  const paused = state.tasks.filter(t => t.status === 'paused');
+  $('paused').classList.toggle('hidden', !paused.length);
+  $('pausedList').innerHTML = paused.map(t => `<div class="client">
+      <div><strong>${esc(t.title)}</strong> <span class="pill">${esc(clientsById[t.client_id]?.name ?? '')}</span></div>
+      <div class="small muted">${fmtClock(t.seconds)} trabajado · se facturaría ${fmtHM(billed(t.seconds, clientsById[t.client_id]?.block_minutes ?? 15))}</div>
+      <div class="row" style="margin-top:8px">
+        <button data-resume="${t.id}">Reanudar</button>
+        <button class="secondary" data-finish="${t.id}">Terminar</button>
+      </div></div>`).join('');
+
+  $('category').innerHTML = cfg.CATEGORIES.map(c => `<option>${esc(c)}</option>`).join('');
+}
+
+function tick() {
+  if (!tickBase) return;
+  const s = tickBase.prev + Math.floor((Date.now() - tickBase.segStart) / 1000);
+  $('clock').textContent = fmtClock(s);
+  $('billedPreview').textContent = fmtHM(billed(s, tickBase.block));
+}
+setInterval(tick, 1000);
+setInterval(() => state && load().catch(() => {}), 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && state) load().catch(() => {}); });
+
+// Acciones
+let finishTarget = null;
+$('startForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('btnStart').disabled = true;
+  try {
+    await rpc('timer_start', { p_client_id: $('client').value, p_title: $('title').value,
+      p_category: $('category').value, p_ghl_task_url: $('ghlUrl').value || null });
+    $('title').value = ''; $('ghlUrl').value = '';
+    await load();
+  } finally { $('btnStart').disabled = false; }
+});
+const showForm = (id) => { ['activeButtons', 'pauseForm', 'finishForm'].forEach(x => $(x).classList.toggle('hidden', x !== id)); };
+$('btnPause').onclick = () => showForm('pauseForm');
+$('btnFinish').onclick = () => { finishTarget = tickBase?.id; showForm('finishForm'); $('deliverable').focus(); };
+document.querySelectorAll('[data-cancel]').forEach(b => b.onclick = () => showForm('activeButtons'));
+$('pauseForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await rpc('timer_pause', { p_task_id: tickBase.id, p_note: $('pauseReason').value });
+  $('pauseReason').value = ''; showForm('activeButtons'); await load();
+});
+$('finishForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await rpc('timer_finish', { p_task_id: finishTarget, p_deliverable: $('deliverable').value });
+  $('deliverable').value = ''; showForm('activeButtons'); $('active').classList.add('hidden'); await load();
+});
+$('pausedList').addEventListener('click', async (e) => {
+  const r = e.target.dataset.resume, f = e.target.dataset.finish;
+  if (r) { await rpc('timer_resume', { p_task_id: r }); await load(); }
+  if (f) {
+    finishTarget = f;
+    $('active').classList.remove('hidden'); showForm('finishForm');
+    $('activeTitle').textContent = state.tasks.find(t => t.id === f)?.title ?? '';
+    $('deliverable').focus();
+  }
+});
+$('stillYes').onclick = async () => { await rpc('timer_heartbeat', { p_task_id: tickBase.id }); await load(); };
+
+// Sesión
+$('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const { error } = await sb.auth.signInWithOtp({ email: $('email').value, options: { emailRedirectTo: location.href.split('#')[0] } });
+  if (error) return showError(error);
+  $('loginSent').classList.remove('hidden');
+});
+$('logout').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+
+sb.auth.onAuthStateChange(async (_ev, session) => {
+  const logged = !!session;
+  $('login').classList.toggle('hidden', logged);
+  $('app').classList.toggle('hidden', !logged);
+  $('logout').classList.toggle('hidden', !logged);
+  if (logged) load().catch(() => {});
+});
+</script>
+</body>
+</html>

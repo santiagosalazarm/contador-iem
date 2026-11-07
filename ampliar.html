@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ampliar horas</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+<main>
+  <header class="top">
+    <div>
+      <div class="small muted">Ideas en Movimiento® · Acompañamiento de marca</div>
+      <h1 id="title">Ampliar horas</h1>
+    </div>
+  </header>
+
+  <div id="err" class="alert error hidden">Este enlace no es válido.</div>
+
+  <section id="status" class="card hidden">
+    <p id="statusText" style="margin:0"></p>
+  </section>
+
+  <section id="choose" class="card hidden">
+    <h2>Elige cuántas horas agregar</h2>
+    <div class="options" id="options"></div>
+    <p class="small muted" style="margin-top:16px">Al completar el pago autorizas por escrito las horas adicionales, como indica la propuesta.
+      Las horas se suman de inmediato a tu saldo de este mes y no se acumulan para el siguiente.
+      <a id="reportLink" href="#">Ver el informe de este mes</a>.</p>
+  </section>
+</main>
+<script>
+const cfg = window.CONTADOR_CONFIG;
+const sb = supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+const $ = (id) => document.getElementById(id);
+const fmtHM = (min) => { const m = Math.max(0, Math.round(min)); const h = Math.floor(m / 60), r = m % 60;
+  return h ? (r ? `${h} h ${r} min` : `${h} h`) : `${r} min`; };
+
+(async () => {
+  const token = new URLSearchParams(location.search).get('t');
+  const { data: c, error } = await sb.rpc('client_by_token', { p_token: token });
+  if (error || !c) { $('err').classList.remove('hidden'); return; }
+  $('title').textContent = `Ampliar horas · ${c.client}`;
+  $('statusText').innerHTML = c.remaining > 0
+    ? `Te quedan <strong>${fmtHM(c.remaining)}</strong> de ${fmtHM(c.available)} este mes.`
+    : `<strong>Las horas de este mes se agotaron.</strong> Tu equipo pausó el trabajo hasta que amplíes.`;
+  $('status').classList.remove('hidden');
+  $('reportLink').href = `informe.html?t=${encodeURIComponent(c.report_token)}`;
+
+  const money = (n) => `${c.currency} ${n.toLocaleString('en-US')}`;
+  $('options').innerHTML = [1, 5, 10].map(h => `<div class="card option">
+      <div class="big">${h} h</div>
+      <div class="muted">${money(h * Number(c.extra_hour_rate))}</div>
+      <div class="small muted">${money(Number(c.extra_hour_rate))} por hora</div>
+      <div style="margin-top:12px"><button data-hours="${h}">Agregar ${h} h</button></div>
+    </div>`).join('');
+  $('choose').classList.remove('hidden');
+
+  // Genera la factura en GHL y lleva al cliente a pagarla.
+  $('options').addEventListener('click', async (e) => {
+    const h = Number(e.target.dataset.hours); if (!h) return;
+    document.querySelectorAll('[data-hours]').forEach(b => b.disabled = true);
+    e.target.textContent = 'Preparando pago…';
+    const { data, error } = await sb.functions.invoke('request-extension', { body: { token, hours: h } });
+    if (error || !data?.url) {
+      $('err').textContent = 'No pudimos generar el pago. Escríbenos y lo resolvemos.';
+      $('err').classList.remove('hidden');
+      document.querySelectorAll('[data-hours]').forEach(b => b.disabled = false);
+      e.target.textContent = `Agregar ${h} h`;
+      return;
+    }
+    location.href = data.url;
+  });
+})();
+</script>
+</body>
+</html>
