@@ -93,15 +93,23 @@
     <section class="card">
       <h2>Nueva tarea</h2>
       <form id="startForm">
-        <label for="client">Cliente</label>
+        <label for="space">Flujograma (espacio de GHL Projects)</label>
+        <select id="space"><option value="">Cargando…</option></select>
+        <label for="board">Tablero</label>
+        <select id="board" disabled><option value="">Elige primero el flujograma</option></select>
+        <label for="client">Cliente (bolsa de horas)</label>
         <select id="client" required></select>
-        <label for="ghlTask">Tarea del tablero en GHL Projects</label>
-        <select id="ghlTask"><option value="">Cargando tareas…</option></select>
+        <label class="small" id="rememberWrap" style="display:none;margin-top:6px">
+          <input type="checkbox" id="rememberBoard" checked style="width:auto"> Asociar siempre este tablero a este cliente
+        </label>
+        <label for="ghlTask">Tarea del tablero</label>
+        <select id="ghlTask" disabled><option value="">Elige primero el tablero</option></select>
+        <div class="small muted" id="taskHours"></div>
         <label for="title">Nombre de la tarea</label>
-        <input id="title" required placeholder="Se llena al elegir una tarea del tablero">
+        <input id="title" required placeholder="Se llena al elegir la tarea del tablero">
         <label for="category">Tipo</label>
         <select id="category"></select>
-        <div style="margin-top:14px"><button type="submit" id="btnStart">Iniciar</button></div>
+        <div style="margin-top:14px"><button type="submit" id="btnStart">▶ Iniciar y abrir flotante</button></div>
       </form>
     </section>
 
@@ -148,7 +156,7 @@ function render() {
 
   // Selector de cliente y saldos
   const sel = $('client'); const cur = sel.value;
-  sel.innerHTML = state.clients.map(c =>
+  sel.innerHTML = '<option value="">Elige el cliente…</option>' + state.clients.map(c =>
     `<option value="${c.client_id}" ${c.status !== 'open' || c.remaining <= 0 ? 'disabled' : ''}>${esc(c.name)}${c.status !== 'open' ? ' — sin horas' : ''}</option>`).join('');
   if (cur) sel.value = cur;
   $('clients').innerHTML = state.clients.map(c => {
@@ -193,27 +201,63 @@ function render() {
       </div></div>`).join('');
 
   if (!$('category').options.length) $('category').innerHTML = cfg.CATEGORIES.map(c => `<option>${esc(c)}</option>`).join('');
-  loadBoard();
+  loadCatalog();
 }
 
-// Tareas del tablero de GHL Projects del cliente elegido
-let loadedTasksFor = null;
-async function loadBoard(force) {
-  const clientId = $('client').value;
-  if (!clientId || (!force && loadedTasksFor === clientId)) return;
-  loadedTasksFor = clientId;
+// ───── GHL Projects: flujograma → tablero → tarea ─────
+let catalog = null, boardClients = {}, boardTasks = {};
+async function loadCatalog() {
+  if (catalog) return;
+  catalog = [];
+  const [{ data, error }, map] = await Promise.all([
+    sb.functions.invoke('project-tasks', { body: { action: 'catalog' } }),
+    sb.rpc('board_clients'),
+  ]);
+  boardClients = map.data ?? {};
+  if (error || data?.error) { $('space').innerHTML = '<option value="">No se pudo leer GHL Projects</option>'; return; }
+  catalog = data.spaces;
+  $('space').innerHTML = '<option value="">Elige el flujograma…</option>' +
+    catalog.map(sp => `<option value="${esc(sp.id)}">${esc(sp.name)}</option>`).join('');
+}
+$('space').addEventListener('change', () => {
+  const sp = catalog.find(x => x.id === $('space').value);
+  $('board').disabled = !sp;
+  $('board').innerHTML = sp ? '<option value="">Elige el tablero…</option>' +
+    sp.lists.map(l => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join('') : '<option value="">Elige primero el flujograma</option>';
+  resetTasks();
+});
+$('board').addEventListener('change', async () => {
+  const listId = $('board').value;
+  resetTasks();
+  if (!listId) return;
+  // Cliente asociado al tablero (si existe y está activo)
+  const mapped = boardClients[listId];
+  if (mapped && state.clients.some(c => c.client_id === mapped)) $('client').value = mapped;
+  updateRemember();
   const sel = $('ghlTask');
   sel.innerHTML = '<option value="">Cargando tareas…</option>';
-  const { data, error } = await sb.functions.invoke('project-tasks', { body: { client_id: clientId } });
-  if (error || data?.error) { sel.innerHTML = '<option value="">No se pudo leer el tablero (escribe el nombre abajo)</option>'; return; }
-  if (!data.groups.length) { sel.innerHTML = '<option value="">Este cliente no tiene tablero (escribe el nombre abajo)</option>'; return; }
-  sel.innerHTML = '<option value="">Elige una tarea… (o escribe una nueva abajo)</option>' + data.groups.map(g =>
+  const { data, error } = await sb.functions.invoke('project-tasks', { body: { action: 'tasks', list_id: listId } });
+  if (error || data?.error) { sel.innerHTML = '<option value="">No se pudieron leer las tareas</option>'; return; }
+  boardTasks = {};
+  data.groups.forEach(g => g.tasks.forEach(t => boardTasks[t.id] = t));
+  sel.disabled = false;
+  sel.innerHTML = '<option value="">Elige la tarea…</option>' + data.groups.map(g =>
     `<optgroup label="${esc(g.label)}">${g.tasks.map(t => `<option value="${esc(t.id)}">${esc(t.title)}</option>`).join('')}</optgroup>`).join('');
+});
+function resetTasks() {
+  $('ghlTask').disabled = true; $('ghlTask').innerHTML = '<option value="">Elige primero el tablero</option>';
+  $('taskHours').textContent = ''; updateRemember();
 }
-$('client').addEventListener('change', () => loadBoard());
+function updateRemember() {
+  const listId = $('board').value, clientId = $('client').value;
+  $('rememberWrap').style.display = listId && clientId && boardClients[listId] !== clientId ? 'block' : 'none';
+}
+$('client').addEventListener('change', updateRemember);
 $('ghlTask').addEventListener('change', (e) => {
-  const opt = e.target.selectedOptions[0];
-  if (e.target.value) $('title').value = opt.textContent;
+  const t = boardTasks[e.target.value];
+  if (t) $('title').value = t.title;
+  $('taskHours').textContent = t ? `Horas estimadas: ${t.estimated ?? '—'} · Horas reales: ${t.actual ?? 0}` +
+    (t.estimated != null && (t.actual ?? 0) >= t.estimated ? ' · ⚠️ ya alcanzó lo estimado' : '') : '';
 });
 
 function tick() {
@@ -314,11 +358,24 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && st
 let finishTarget = null;
 $('startForm').addEventListener('submit', async (e) => {
   e.preventDefault();
+  // La ventana flotante debe abrirse dentro del mismo clic (regla del navegador).
+  if (pipSupported && !pip) openPip().catch(() => {});
   $('btnStart').disabled = true;
   try {
-    await rpc('timer_start', { p_client_id: $('client').value, p_title: $('title').value,
+    const listId = $('board').value || null, clientId = $('client').value;
+    const t = await rpc('timer_start', { p_client_id: clientId, p_title: $('title').value,
       p_category: $('category').value, p_ghl_task_url: null, p_ghl_task_id: $('ghlTask').value || null });
-    $('title').value = ''; $('ghlTask').value = '';
+    if (listId) {
+      await sb.rpc('set_task_board', { p_task_id: t.id, p_list_id: listId });
+      if ($('rememberWrap').style.display !== 'none' && $('rememberBoard').checked) {
+        const sp = catalog.find(x => x.id === $('space').value);
+        await sb.rpc('set_board_client', { p_list_id: listId, p_client_id: clientId,
+          p_space_name: sp?.name ?? null, p_list_name: $('board').selectedOptions[0]?.textContent ?? null });
+        boardClients[listId] = clientId;
+      }
+    }
+    $('title').value = ''; $('ghlTask').value = ''; $('taskHours').textContent = '';
+    updateRemember();
     await load();
   } finally { $('btnStart').disabled = false; }
 });
