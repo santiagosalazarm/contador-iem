@@ -100,6 +100,7 @@
         <label>Cliente (lo define el tablero)</label>
         <div id="clientInfo" class="client-info muted">Elige el tablero</div>
         <input type="hidden" id="client">
+        <div id="boardSummary" class="board-summary hidden"></div>
         <div id="assignWrap" class="row hidden" style="margin-top:8px">
           <select id="assignClient"></select>
           <button type="button" id="assignBtn" class="secondary">Asociar tablero a este cliente</button>
@@ -231,17 +232,45 @@ $('board').addEventListener('change', async () => {
   showBoardClient(listId);
   const sel = $('ghlTask');
   sel.innerHTML = '<option value="">Cargando tareas…</option>';
-  const { data, error } = await sb.functions.invoke('project-tasks', { body: { action: 'tasks', list_id: listId } });
+  const month = new Date().toISOString().slice(0, 7);
+  const { data, error } = await sb.functions.invoke('project-tasks', { body: { action: 'tasks', list_id: listId, month } });
   if (error || data?.error) { sel.innerHTML = '<option value="">No se pudieron leer las tareas</option>'; return; }
+  renderBoardSummary(listId, data.summary);
   boardTasks = {};
   data.groups.forEach(g => g.tasks.forEach(t => boardTasks[t.id] = t));
   sel.disabled = false;
   sel.innerHTML = '<option value="">Elige la tarea…</option>' + data.groups.map(g =>
     `<optgroup label="${esc(g.label)}">${g.tasks.map(t => `<option value="${esc(t.id)}">${esc(t.title)}</option>`).join('')}</optgroup>`).join('');
 });
+// Horas del cliente (contador) y de las tarjetas del tablero (GHL)
+const fmtH = (h) => fmtHM(Math.round((h ?? 0) * 60));
+function renderBoardSummary(listId, sm) {
+  const box = $('boardSummary'), m = boardClients[listId];
+  const live = m && state.clients.find(c => c.client_id === m.client_id);
+  if (!live || !sm) { box.classList.add('hidden'); return; }
+  const leftIfEstimates = live.remaining - Math.round(sm.pending_estimated * 60);
+  const pct = live.available ? Math.min(100, live.consumed / live.available * 100) : 100;
+  box.innerHTML = `
+    <div class="sum-title">Bolsa del mes · ${esc(m.name)}</div>
+    <div class="bar ${live.remaining <= 0 ? 'danger' : live.remaining <= 120 ? 'warn' : ''}"><span style="width:${pct}%"></span></div>
+    <div class="sum-grid">
+      <div><span>Disponibles</span><b>${fmtHM(live.available)}</b></div>
+      <div><span>Usadas</span><b>${fmtHM(live.consumed)}</b></div>
+      <div><span>Quedan</span><b>${fmtHM(live.remaining)}</b></div>
+    </div>
+    <div class="sum-title" style="margin-top:12px">Según las tarjetas del tablero</div>
+    <div class="sum-grid">
+      <div><span>Horas reales este mes</span><b>${fmtH(sm.actual_month)}</b></div>
+      <div><span>Estimadas pendientes</span><b>${fmtH(sm.pending_estimated)}</b></div>
+      <div><span>Quedarían</span><b class="${leftIfEstimates < 0 ? 'neg' : ''}">${leftIfEstimates < 0 ? '−' : ''}${fmtHM(Math.abs(leftIfEstimates))}</b></div>
+    </div>
+    <div class="small muted" style="margin-top:6px">${sm.open_cards} tarjetas abiertas${sm.open_without_estimate ? ` · ${sm.open_without_estimate} sin horas estimadas` : ''}${leftIfEstimates < 0 ? ' · ⚠️ las estimaciones superan las horas que quedan: habrá que ampliar' : ''}</div>`;
+  box.classList.remove('hidden');
+}
+
 function resetTasks() {
   $('ghlTask').disabled = true; $('ghlTask').innerHTML = '<option value="">Elige primero el tablero</option>';
-  $('taskHours').textContent = ''; showBoardClient($('board').value);
+  $('taskHours').textContent = ''; $('boardSummary').classList.add('hidden'); showBoardClient($('board').value);
 }
 // El cliente sale del tablero. Si el tablero no tiene cliente, solo un admin lo asocia.
 function showBoardClient(listId) {
