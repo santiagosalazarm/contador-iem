@@ -105,7 +105,25 @@
         <div id="boardSummary" class="board-summary hidden"></div>
         <div id="assignWrap" class="row hidden" style="margin-top:8px">
           <select id="assignClient"></select>
-          <button type="button" id="assignBtn" class="secondary">Asociar tablero a este cliente</button>
+          <button type="button" id="assignBtn" class="secondary">Asociar a este cliente existente</button>
+        </div>
+        <div id="createWrap" class="board-summary hidden">
+          <div class="sum-title">Crear cliente nuevo para este tablero</div>
+          <label for="ccSearch">Buscar el contacto en GHL</label>
+          <input id="ccSearch" placeholder="Nombre, empresa o correo" autocomplete="off">
+          <div id="ccResults" class="small"></div>
+          <input type="hidden" id="ccContactId"><input type="hidden" id="ccContactName">
+          <label for="ccName">Nombre del cliente (empresa)</label>
+          <input id="ccName">
+          <label for="ccEmail">Correo con acceso al portal</label>
+          <input id="ccEmail" type="email">
+          <div class="row">
+            <div style="flex:1 1 120px"><label for="ccFee">Fee mensual (USD)</label><input id="ccFee" type="number" min="0" step="1" value="1250"></div>
+            <div style="flex:1 1 100px"><label for="ccHours">Horas del plan</label><input id="ccHours" type="number" min="0.25" step="0.25" value="10"></div>
+            <div style="flex:1 1 120px"><label for="ccRate">Hora extra (USD)</label><input id="ccRate" type="number" min="0" step="1" value="140"></div>
+          </div>
+          <div style="margin-top:12px"><button type="button" id="ccBtn">Crear cliente y asociar tablero</button></div>
+          <p class="small muted">Se crea su bolsa del mes y el correo queda con acceso al portal. No se le envía nada al cliente.</p>
         </div>
         <label for="ghlTask">Tarea del tablero</label>
         <select id="ghlTask" disabled><option value="">Elige primero el tablero</option></select>
@@ -325,7 +343,7 @@ function resetTasks() {
 // El cliente sale del tablero. Si el tablero no tiene cliente, solo un admin lo asocia.
 function showBoardClient(listId) {
   const info = $('clientInfo'), m = boardClients[listId];
-  $('client').value = ''; $('assignWrap').classList.add('hidden');
+  $('client').value = ''; $('assignWrap').classList.add('hidden'); $('createWrap').classList.add('hidden');
   info.className = 'client-info';
   if (!listId) { info.textContent = 'Elige el tablero'; info.classList.add('muted'); return; }
   if (!m) {
@@ -343,8 +361,45 @@ function showBoardClient(listId) {
 async function openAssign() {
   const { data } = await sb.rpc('all_clients');
   $('assignClient').innerHTML = (data ?? []).map(c => `<option value="${c.client_id}">${esc(c.name)}${c.active ? '' : ' (inactivo)'}</option>`).join('');
-  $('assignWrap').classList.remove('hidden');
+  $('assignWrap').classList.toggle('hidden', !(data ?? []).length);
+  // Formulario de cliente nuevo, con el nombre del tablero como pista de búsqueda.
+  const board = ($('board').selectedOptions[0]?.textContent ?? '').replace(/^tablero\s+/i, '').trim();
+  $('ccSearch').value = board; $('ccName').value = ''; $('ccEmail').value = ''; $('ccContactId').value = '';
+  $('createWrap').classList.remove('hidden');
+  if (board.length >= 2) searchContacts(board);
 }
+let ccTimer = null, ccFound = [];
+async function searchContacts(q) {
+  const { data } = await sb.functions.invoke('project-tasks', { body: { action: 'search_contacts', q } });
+  ccFound = data?.contacts ?? [];
+  $('ccResults').innerHTML = ccFound.length ? ccFound.map((c, i) => `<div class="client" style="cursor:pointer" data-cc="${i}">
+      <strong>${esc(c.company || c.name)}</strong>${c.company && c.name ? ` · ${esc(c.name)}` : ''}<div class="muted">${esc(c.email || 'sin correo')}${c.phone ? ' · ' + esc(c.phone) : ''}</div></div>`).join('')
+    : '<div class="muted" style="margin-top:6px">Sin resultados en GHL.</div>';
+}
+$('ccSearch').addEventListener('input', (e) => { clearTimeout(ccTimer); const q = e.target.value.trim(); if (q.length >= 2) ccTimer = setTimeout(() => searchContacts(q), 350); });
+$('ccResults').addEventListener('click', (e) => {
+  const el = e.target.closest('[data-cc]'); if (!el) return;
+  const c = ccFound[Number(el.dataset.cc)];
+  $('ccContactId').value = c.id; $('ccContactName').value = c.name;
+  $('ccName').value = c.company || c.name; $('ccEmail').value = c.email;
+  $('ccResults').innerHTML = `<div class="muted" style="margin-top:6px">✔ Contacto elegido: ${esc(c.name || c.company)}</div>`;
+});
+$('ccBtn').onclick = async () => {
+  if (!$('ccContactId').value) return showError('Elige el contacto de GHL en los resultados de búsqueda.');
+  const listId = $('board').value, sp = catalog.find(x => x.id === $('space').value);
+  $('ccBtn').disabled = true;
+  try {
+    await rpc('create_client_for_board', {
+      p_list_id: listId, p_space_name: sp?.name ?? null, p_list_name: $('board').selectedOptions[0]?.textContent ?? null,
+      p_name: $('ccName').value, p_contact_id: $('ccContactId').value, p_email: $('ccEmail').value,
+      p_contact_name: $('ccContactName').value, p_monthly_fee: Number($('ccFee').value || 0),
+      p_plan_hours: Number($('ccHours').value), p_extra_rate: Number($('ccRate').value), p_currency: 'USD', p_timezone: 'America/Bogota' });
+    $('createWrap').classList.add('hidden'); $('assignWrap').classList.add('hidden');
+    await load();
+    boardClients = (await sb.rpc('board_clients')).data ?? {};
+    showBoardClient(listId);
+  } finally { $('ccBtn').disabled = false; }
+};
 $('assignBtn').onclick = async () => {
   const listId = $('board').value, sp = catalog.find(x => x.id === $('space').value);
   await rpc('set_board_client', { p_list_id: listId, p_client_id: $('assignClient').value,
