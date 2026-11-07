@@ -3,105 +3,161 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Mis horas · Ideas en Movimiento</title>
+  <title>Mi portal · Ideas en Movimiento</title>
+  <meta name="theme-color" content="#ee7623">
+  <link rel="icon" href="favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <script src="config.js"></script>
   <script src="business-days.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 </head>
 <body>
-<main>
-  <header class="top">
-    <div>
-      <div class="small muted">Ideas en Movimiento® · Acompañamiento de marca</div>
-      <h1 id="title">Mis horas</h1>
-    </div>
-    <div class="row" style="flex:0 0 auto">
-      <select id="periodSel" class="hidden" style="width:auto"></select>
-      <button id="logout" class="secondary hidden">Salir</button>
-    </div>
-  </header>
-
-  <div id="msg" class="alert error hidden"></div>
-
-  <section id="login" class="card hidden">
-    <h2>Entrar</h2>
-    <p class="muted small">Escribe tu correo y te enviaremos un enlace para entrar.</p>
-    <form id="loginForm">
-      <label for="email">Correo</label>
-      <input id="email" type="email" required autocomplete="email">
-      <div style="margin-top:14px"><button type="submit">Enviar enlace</button></div>
-    </form>
-    <p id="loginSent" class="small hidden">Revisa tu correo y abre el enlace en este mismo dispositivo.</p>
-  </section>
-
-  <section id="portal" class="hidden">
-    <!-- Solicitudes pendientes -->
-    <section id="pending" class="card hidden" style="border-color: var(--warn)">
-      <h2>Solicitudes de horas extra</h2>
-      <div id="pendingList"></div>
-    </section>
-
-    <!-- Nueva solicitud de trabajo -->
+  <!-- Acceso -->
+  <div id="login" class="auth hidden">
     <section class="card">
-      <h2>¿Qué necesitas?</h2>
-      <div class="alert small" style="border-color:var(--line)">
-        🕐 Las solicitudes se atienden con <strong>24 horas de margen</strong>. Las que llegan un viernes, un fin de semana
-        o un festivo empiezan a ejecutarse el <strong>siguiente día hábil</strong> (normalmente el lunes, salvo festivo en Colombia).
-      </div>
-      <form id="reqForm">
-        <label for="reqTitle">Solicitud</label>
-        <input id="reqTitle" required maxlength="200" placeholder="Ej.: Banner de San Valentín para la web">
-        <label for="reqDesc">Detalles (opcional)</label>
-        <textarea id="reqDesc" maxlength="5000" placeholder="Medidas, textos, referencias, enlaces…"></textarea>
-        <div class="row" style="align-items:flex-end">
-          <div style="flex:0 0 200px"><label for="reqDate">¿Para cuándo? (opcional)</label><input id="reqDate" type="date"></div>
-          <div style="flex:0 0 auto"><button type="submit" id="reqBtn">Enviar solicitud</button></div>
-        </div>
+      <img src="logo.svg" alt="Ideas en Movimiento" class="logo">
+      <div class="eyebrow">Progress · Clientes</div>
+      <h2>Entra a tu portal</h2>
+      <p class="muted small">Escribe tu correo y te enviaremos un enlace para entrar. No necesitas contraseña.</p>
+      <form id="loginForm">
+        <label for="email">Correo</label>
+        <input id="email" type="email" required autocomplete="email" placeholder="tu@empresa.com">
+        <div style="margin-top:18px"><button type="submit" style="width:100%">Enviar enlace</button></div>
       </form>
-      <p id="reqStart" class="small muted"></p>
-      <p id="reqOk" class="small hidden" style="color:var(--ok)"></p>
-      <div id="reqList" style="margin-top:12px"></div>
+      <p id="loginSent" class="small hidden">📩 Revisa tu correo y abre el enlace en este mismo dispositivo.</p>
     </section>
+  </div>
 
-    <!-- Resumen -->
-    <section class="card">
-      <h2>Resumen del mes</h2>
-      <div class="sum-grid sum-4">
-        <div><span>Fee mensual</span><b id="fee"></b></div>
-        <div><span>Horas del plan</span><b id="plan"></b></div>
-        <div><span>Consumidas</span><b id="consumed"></b></div>
-        <div><span>Disponibles</span><b id="remaining"></b></div>
+  <div id="portal" class="shell hidden">
+    <aside class="rail glass">
+      <a class="rail-logo" href="index.html" title="Ideas en Movimiento"><img src="favicon.png" alt="Ideas en Movimiento"></a>
+      <nav class="tabs" role="tablist" aria-label="Secciones">
+        <button class="tab active" data-tab="summary" role="tab" aria-selected="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg>
+          <span>Resumen</span></button>
+        <button class="tab" data-tab="requests" role="tab" aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+          <span>Solicitudes</span></button>
+        <button class="tab" data-tab="usage" role="tab" aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+          <span>Consumo</span></button>
+        <button class="tab" data-tab="extra" role="tab" aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+          <span>Horas extra</span><i class="dot hidden" id="extraDot"></i></button>
+      </nav>
+      <div class="rail-foot">
+        <button id="logout" class="ghost hidden" title="Salir">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+        </button>
       </div>
-      <div class="bar" id="bar" style="margin-top:14px"><span></span></div>
-      <div class="small muted" id="barText"></div>
-    </section>
+    </aside>
 
-    <!-- Horas extra -->
-    <section class="card">
-      <h2>Horas extra del mes</h2>
-      <div class="sum-grid">
-        <div><span>Horas extra aprobadas</span><b id="extraHours"></b></div>
-        <div><span>Valor por hora</span><b id="rate"></b></div>
-        <div><span>Valor adicional a pagar</span><b id="extraAmount"></b></div>
-      </div>
-      <div id="history" class="small" style="margin-top:12px"></div>
-    </section>
+    <main class="content">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow" id="tabName">Resumen</div>
+          <h1 id="title">Mi portal</h1>
+        </div>
+        <div class="row">
+          <select id="periodSel" class="hidden" style="width:auto"></select>
+          <img src="logo.svg" alt="Ideas en Movimiento" style="height:42px">
+        </div>
+      </header>
 
-    <!-- En qué se consumieron -->
-    <section class="card">
-      <h2>¿En qué se usaron las horas?</h2>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Fecha</th><th>Trabajo realizado</th><th class="num">Tiempo</th></tr></thead>
-          <tbody id="items"></tbody>
-          <tfoot><tr><th colspan="2">Total consumido</th><th class="num" id="itemsTotal"></th></tr></tfoot>
-        </table>
-      </div>
-      <p class="small muted">Cada tarea se registra en bloques de 15 minutos. Las horas del plan no se acumulan para el mes siguiente.</p>
-    </section>
-  </section>
-</main>
+      <div id="msg" class="alert error hidden"></div>
+
+      <!-- Solicitud de horas extra pendiente: visible en todas las pestañas -->
+      <section id="pending" class="card hidden" style="border-color: rgba(238,118,35,.45)">
+        <h2>⏳ Solicitud de horas extra por aprobar</h2>
+        <div id="pendingList"></div>
+      </section>
+
+      <!-- ───── Resumen ───── -->
+      <section class="panel" data-panel="summary">
+        <div class="kpis">
+          <div class="card kpi"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="3"/><circle cx="12" cy="12" r="2.5"/></svg></div><span>Fee mensual</span><b id="fee"></b></div>
+          <div class="card kpi blue"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><span>Horas del plan</span><b id="plan"></b></div>
+          <div class="card kpi navy"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 17l6-6 4 4 8-8"/></svg></div><span>Consumidas</span><b id="consumed"></b></div>
+          <div class="card kpi ok"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg></div><span>Disponibles</span><b id="remaining"></b></div>
+        </div>
+        <div class="grid-2">
+          <section class="card">
+            <h2>Uso del mes</h2>
+            <div class="row" style="align-items:center;gap:24px;flex-wrap:nowrap">
+              <div class="ring" id="ring" style="flex:0 0 auto"><div><b id="ringPct">0%</b><small>usado</small></div></div>
+              <div style="flex:1 1 auto;min-width:0">
+                <div class="bar" id="bar"><span></span></div>
+                <div class="small muted" id="barText"></div>
+              </div>
+            </div>
+          </section>
+          <section class="card">
+            <h2>Horas extra del mes</h2>
+            <div class="sum-grid">
+              <div><span>Aprobadas</span><b id="extraHours"></b></div>
+              <div><span>Valor por hora</span><b id="rate"></b></div>
+              <div><span>Valor adicional</span><b id="extraAmount"></b></div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- ───── Solicitudes ───── -->
+      <section class="panel hidden" data-panel="requests">
+        <div class="grid-2">
+          <section class="card">
+            <h2>¿Qué necesitas?</h2>
+            <div class="alert small" style="background:var(--blue-50);border-color:rgba(58,116,240,.2)">
+              🕐 Las solicitudes se atienden con <strong>24 horas de margen</strong>. Las que llegan un viernes, un fin de semana
+              o un festivo empiezan a ejecutarse el <strong>siguiente día hábil</strong> (normalmente el lunes, salvo festivo en Colombia).
+            </div>
+            <form id="reqForm">
+              <label for="reqTitle">Solicitud</label>
+              <input id="reqTitle" required maxlength="200" placeholder="Ej.: Banner de San Valentín para la web">
+              <label for="reqDesc">Detalles (opcional)</label>
+              <textarea id="reqDesc" maxlength="5000" placeholder="Medidas, textos, referencias, enlaces…"></textarea>
+              <label for="reqDate">¿Para cuándo? (opcional)</label>
+              <input id="reqDate" type="date">
+              <p id="reqStart" class="small muted"></p>
+              <button type="submit" id="reqBtn" style="width:100%">Enviar solicitud</button>
+            </form>
+            <p id="reqOk" class="small hidden" style="color:var(--ok)"></p>
+          </section>
+          <section class="card">
+            <h2>Mis solicitudes</h2>
+            <div id="reqList"><div class="empty"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></div>Aún no has enviado solicitudes.</div></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- ───── Consumo ───── -->
+      <section class="panel hidden" data-panel="usage">
+        <section class="card">
+          <h2>¿En qué se usaron las horas?</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Fecha</th><th>Trabajo realizado</th><th class="num">Tiempo</th></tr></thead>
+              <tbody id="items"></tbody>
+              <tfoot><tr><th colspan="2">Total consumido</th><th class="num" id="itemsTotal"></th></tr></tfoot>
+            </table>
+          </div>
+          <p class="small muted" style="margin-bottom:0">Cada tarea se registra en bloques de 15 minutos. Las horas del plan no se acumulan para el mes siguiente.</p>
+        </section>
+      </section>
+
+      <!-- ───── Horas extra ───── -->
+      <section class="panel hidden" data-panel="extra">
+        <section class="card">
+          <h2>Historial de solicitudes de horas extra</h2>
+          <div id="history"><div class="empty">Sin solicitudes de horas extra este mes.</div></div>
+        </section>
+      </section>
+    </main>
+  </div>
+
 <script>
 const cfg = window.CONTADOR_CONFIG;
 const sb = supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
@@ -140,6 +196,9 @@ function render() {
   const pct = data.available ? Math.min(100, data.consumed / data.available * 100) : 100;
   $('bar').className = 'bar' + (data.remaining <= 0 ? ' danger' : data.remaining <= 120 ? ' warn' : '');
   $('bar').querySelector('span').style.width = pct + '%';
+  $('ring').style.setProperty('--p', Math.round(pct));
+  $('ring').style.setProperty('--c', data.remaining <= 0 ? 'var(--danger)' : data.remaining <= 60 ? 'var(--warn)' : 'var(--orange)');
+  $('ringPct').textContent = Math.round(pct) + '%';
   $('barText').textContent = `${fmtHM(data.consumed)} usadas de ${fmtHM(data.available)}` +
     (data.extra_minutes ? ` (${fmtHM(data.plan_minutes)} del plan + ${fmtHM(data.extra_minutes)} extra)` : '');
 
@@ -150,6 +209,7 @@ function render() {
   // Pendientes (solo el mes actual se puede decidir)
   const pending = data.requests.filter(r => r.status === 'pending');
   $('pending').classList.toggle('hidden', !pending.length);
+  $('extraDot').textContent = pending.length; $('extraDot').classList.toggle('hidden', !pending.length);
   $('pendingList').innerHTML = pending.map(r => `<div class="client">
       <div><strong>${fmtHours(r.hours)} adicionales · ${money(r.amount)}</strong></div>
       <div class="small">${esc(r.reason)}</div>
@@ -160,8 +220,8 @@ function render() {
       </div></div>`).join('');
 
   const decided = data.requests.filter(r => r.status !== 'pending');
-  $('history').innerHTML = decided.length ? '<div class="sum-title">Historial de solicitudes</div>' + decided.map(r =>
-    `<div class="client">${fmtHours(r.hours)} · ${money(r.amount)} · ${r.status === 'approved' ? '✅ aceptada' : '✖️ rechazada'} el ${fmtDate(r.decided_at)}<div class="muted">${esc(r.reason)}</div></div>`).join('') : '';
+  $('history').innerHTML = !decided.length ? '<div class="empty">Sin solicitudes de horas extra respondidas este mes.</div>' : decided.map(r =>
+    `<div class="client"><div class="row" style="justify-content:space-between;align-items:center"><strong style="flex:1 1 auto">${fmtHours(r.hours)} · ${money(r.amount)}</strong><span class="pill ${r.status === 'approved' ? 'run' : 'stop'}" style="flex:0 0 auto">${r.status === 'approved' ? 'Aceptada' : 'Rechazada'} el ${fmtDate(r.decided_at)}</span></div><div class="small muted">${esc(r.reason)}</div></div>`).join('');
 
   let total = 0;
   $('items').innerHTML = data.items.map(i => { total += i.minutes; return `<tr><td>${fmtDate(i.date)}</td>
@@ -195,6 +255,17 @@ function confirmInline(btn, text) {
 }
 $('periodSel').addEventListener('change', (e) => load(e.target.value));
 
+// ───── Pestañas ─────
+const TAB_NAMES = { summary: 'Resumen', requests: 'Solicitudes', usage: 'Consumo', extra: 'Horas extra' };
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(t => { const on = t.dataset.tab === name; t.classList.toggle('active', on); t.setAttribute('aria-selected', on); });
+  document.querySelectorAll('[data-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== name));
+  $('tabName').textContent = TAB_NAMES[name];
+  try { localStorage.setItem('progress.client.tab', name); } catch {}
+}
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => showTab(t.dataset.tab));
+try { const saved = localStorage.getItem('progress.client.tab'); if (saved && TAB_NAMES[saved]) showTab(saved); } catch {}
+
 // ───── Política de inicio: 24 h de margen y siguiente día hábil en Colombia ─────
 const fmtLong = (d) => new Date(String(d).slice(0, 10) + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
 function updateStartPreview() {
@@ -212,12 +283,12 @@ async function loadRequests() {
   const { data, error } = await sb.functions.invoke('client-requests', { body: { action: 'list' } });
   if (error || data?.error) return;
   const cls = { to_do: '', doing: 'run', done: 'run', closed: 'run' };
-  $('reqList').innerHTML = data.requests.length ? '<div class="sum-title">Mis solicitudes</div>' + data.requests.map(r => `
+  $('reqList').innerHTML = !data.requests.length ? '<div class="empty">Aún no has enviado solicitudes.</div>' : data.requests.map(r => `
     <div class="client"><div class="row" style="justify-content:space-between;align-items:center">
       <strong style="flex:1 1 auto">${esc(r.title)}</strong>
       <span class="pill ${cls[r.group] ?? ''}" style="flex:0 0 auto">${esc(r.status)}</span></div>
       <div class="small muted">Enviada el ${fmtDate(r.created_at)}${r.estimated_start ? ` · inicio estimado ${fmtLong(r.estimated_start)}` : ''}${r.desired_date ? ` · deseada para el ${fmtDate(r.desired_date)}` : ''}</div>
-    </div>`).join('') : '';
+    </div>`).join('');
 }
 $('reqForm').addEventListener('submit', async (e) => {
   e.preventDefault();
