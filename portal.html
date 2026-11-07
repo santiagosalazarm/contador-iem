@@ -251,7 +251,7 @@ sb.auth.onAuthStateChange(async (_ev, session) => {
   $('logout').classList.toggle('hidden', !logged);
   if (!logged) return;
   const { data: who } = await sb.rpc('whoami');
-  if (who?.kind === 'member') { location.replace('index.html'); return; }
+  if (who?.kind === 'member') { location.replace('team.html'); return; }
   load();
   loadRequests();
 });

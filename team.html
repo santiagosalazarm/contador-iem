@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Staff · Progress</title>
+  <meta name="theme-color" content="#2f5d50">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+<main>
+  <header class="top">
+    <h1><a href="index.html" style="color:inherit;text-decoration:none">Progress</a> · Staff</h1>
+    <div class="row" style="flex:0 0 auto">
+      <button id="btnPip" class="secondary hidden" title="Abre un reloj que queda siempre encima de las demás ventanas">📌 Flotante</button>
+      <button id="logout" class="secondary hidden">Salir</button>
+    </div>
+  </header>
+
+  <div id="msg" class="alert error hidden"></div>
+
+  <!-- Login -->
+  <section id="login" class="card hidden">
+    <h2>Acceso Staff</h2>
+    <p class="muted small">Entra con tu correo de usuario de GHL. Te enviamos un enlace para entrar.</p>
+    <form id="loginForm">
+      <label for="email">Correo</label>
+      <input id="email" type="email" required autocomplete="email">
+      <div style="margin-top:14px"><button type="submit">Enviar enlace</button></div>
+    </form>
+    <p id="loginSent" class="small hidden">Revisa tu correo y abre el enlace en este mismo dispositivo.</p>
+    <p class="small muted" style="margin-top:12px">¿Eres cliente? <a href="index.html">Entra por aquí</a>.</p>
+  </section>
+
+  <section id="app" class="hidden">
+    <!-- ¿Sigues trabajando? -->
+    <div id="reminder" class="alert hidden">
+      <strong>¿Sigues trabajando en "<span id="reminderTitle"></span>"?</strong>
+      <div class="row" style="margin-top:10px">
+        <button id="stillYes">Sí, sigo</button>
+      </div>
+      <p class="small muted">Si no confirmas en 15 min, se pausa sola desde la hora del aviso.</p>
+    </div>
+
+    <!-- Tarea en curso -->
+    <section id="active" class="card hidden">
+      <h2>En curso</h2>
+      <div><strong id="activeTitle"></strong> <span class="pill" id="activeClient"></span></div>
+      <div class="clock" id="clock">00:00:00</div>
+      <div class="small muted">Se facturará: <strong id="billedPreview"></strong> (bloques de <span id="blockSize"></span> min)</div>
+
+      <div id="activeButtons" class="row" style="margin-top:14px">
+        <button id="btnPause" class="warn">Pausar</button>
+        <button id="btnFinish">Terminar</button>
+      </div>
+
+      <form id="pauseForm" class="hidden">
+        <label for="pauseReason">¿Por qué pausas?</label>
+        <select id="pauseReason" required>
+          <option value="">Elige…</option>
+          <option>Almuerzo / descanso</option>
+          <option>Reunión interna</option>
+          <option>Cambio a otro cliente</option>
+          <option>Esperando insumos del cliente</option>
+          <option>Fin de jornada</option>
+          <option>Otro</option>
+        </select>
+        <div class="row" style="margin-top:12px">
+          <button type="submit" class="warn">Confirmar pausa</button>
+          <button type="button" class="secondary" data-cancel>Cancelar</button>
+        </div>
+      </form>
+
+      <form id="finishForm" class="hidden">
+        <label for="deliverable">¿Qué se entregó? (lo verá el cliente en el informe)</label>
+        <textarea id="deliverable" required></textarea>
+        <div class="row" style="margin-top:12px">
+          <button type="submit">Terminar tarea</button>
+          <button type="button" class="secondary" data-cancel>Cancelar</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Pausadas -->
+    <section id="paused" class="card hidden">
+      <h2>En pausa</h2>
+      <div id="pausedList"></div>
+    </section>
+
+    <!-- Nueva tarea -->
+    <section class="card">
+      <h2>Nueva tarea</h2>
+      <form id="startForm">
+        <label for="space">Flujograma (espacio de GHL Projects)</label>
+        <select id="space"><option value="">Cargando…</option></select>
+        <label for="board">Tablero</label>
+        <select id="board" disabled><option value="">Elige primero el flujograma</option></select>
+        <label>Cliente (lo define el tablero)</label>
+        <div id="clientInfo" class="client-info muted">Elige el tablero</div>
+        <input type="hidden" id="client">
+        <div id="boardMembers" class="small muted" style="margin-top:6px"></div>
+        <div id="boardSummary" class="board-summary hidden"></div>
+        <div id="assignWrap" class="row hidden" style="margin-top:8px">
+          <select id="assignClient"></select>
+          <button type="button" id="assignBtn" class="secondary">Asociar tablero a este cliente</button>
+        </div>
+        <label for="ghlTask">Tarea del tablero</label>
+        <select id="ghlTask" disabled><option value="">Elige primero el tablero</option></select>
+        <div class="small muted" id="taskHours"></div>
+        <label for="title">Nombre de la tarea</label>
+        <input id="title" required placeholder="Se llena al elegir la tarea del tablero">
+        <label for="category">Tipo</label>
+        <select id="category"></select>
+        <div style="margin-top:14px"><button type="submit" id="btnStart">▶ Iniciar y abrir flotante</button></div>
+      </form>
+    </section>
+
+    <!-- Saldos -->
+    <section class="card">
+      <h2>Saldo del mes</h2>
+      <div id="clients"></div>
+    </section>
+
+    <!-- Horas extra y accesos del cliente -->
+    <section class="card">
+      <h2>Horas extra y portal del cliente</h2>
+      <label for="xClient">Cliente</label>
+      <select id="xClient"></select>
+      <form id="xForm" class="row" style="margin-top:10px;align-items:flex-end">
+        <div style="flex:0 0 110px"><label for="xHours">Horas</label><input id="xHours" type="number" min="0.25" step="0.25" value="1" required></div>
+        <div style="flex:1 1 240px"><label for="xReason">Motivo (lo verá el cliente)</label><input id="xReason" required placeholder="Ej.: ajustes adicionales de la web solicitados"></div>
+        <div style="flex:0 0 auto"><button type="submit">Enviar solicitud</button></div>
+      </form>
+      <div class="small muted" id="xPrice"></div>
+      <div id="xRequests" style="margin-top:12px"></div>
+      <div id="xUsers" class="small" style="margin-top:12px"></div>
+    </section>
+  </section>
+</main>
+
+<script>
+const cfg = window.CONTADOR_CONFIG;
+const sb = supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+const $ = (id) => document.getElementById(id);
+let state = null, tickBase = null;
+
+const fmtHM = (min) => { const m = Math.max(0, Math.round(min)); const h = Math.floor(m / 60), r = m % 60;
+  return h ? (r ? `${h} h ${r} min` : `${h} h`) : `${r} min`; };
+const fmtClock = (s) => [Math.floor(s / 3600), Math.floor(s % 3600 / 60), s % 60].map(n => String(n).padStart(2, '0')).join(':');
+const billed = (s, block) => s <= 0 ? 0 : Math.ceil(s / (block * 60)) * block;
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function showError(e) {
+  const raw = e?.message || String(e);
+  const text = raw.replace(/^[A-Z_]+: /, '');
+  $('msg').textContent = raw.startsWith('SIN_SALDO') ? '⛔ ' + text + '. El cliente ya recibió la invitación a ampliar.' : text;
+  $('msg').classList.remove('hidden');
+  setTimeout(() => $('msg').classList.add('hidden'), 8000);
+}
+async function rpc(fn, args) {
+  const { data, error } = await sb.rpc(fn, args);
+  if (error) { showError(error); throw error; }
+  return data;
+}
+
+async function load() {
+  const who = (await sb.rpc('whoami')).data;
+  if (who?.kind === 'client') { location.replace('portal.html'); return; }
+  let { data, error } = await sb.rpc('dashboard');
+  if (error && /NO_AUTORIZADO/.test(error.message)) {
+    // Primera vez: alta automática si el correo es usuario de GHL en la subcuenta.
+    const j = await sb.functions.invoke('project-tasks', { body: { action: 'join' } });
+    if (j.error || j.data?.error) {
+      let msg = 'Tu correo no es usuario de GHL en la subcuenta de Ideas en Movimiento.';
+      try { msg = (await j.error?.context?.json())?.error ?? j.data?.error ?? msg; } catch {}
+      showError(msg); throw error;
+    }
+    ({ data, error } = await sb.rpc('dashboard'));
+  }
+  if (error) { showError(error); throw error; }
+  state = data;
+  render();
+}
+
+function render() {
+  const clientsById = Object.fromEntries(state.clients.map(c => [c.client_id, c]));
+
+  // Saldos
+  $('clients').innerHTML = state.clients.map(c => {
+    const pct = c.available ? Math.min(100, c.consumed / c.available * 100) : 100;
+    const cls = c.remaining <= 0 ? 'danger' : c.remaining <= 120 ? 'warn' : '';
+    return `<div class="client">
+      <div class="row" style="justify-content:space-between"><strong>${esc(c.name)}</strong>
+        <span class="pill ${c.status === 'open' ? '' : 'stop'}">${c.status === 'open' ? 'activo' : 'agotado'}</span></div>
+      <div class="bar ${cls}"><span style="width:${pct}%"></span></div>
+      <div class="small muted">${fmtHM(c.consumed)} de ${fmtHM(c.available)} · quedan <strong>${fmtHM(c.remaining)}</strong>
+        ${state.member.role === 'admin' ? ` · <a href="informe.html?t=${c.report_token}" target="_blank">informe</a>` : ''}</div>
+    </div>`;
+  }).join('') || '<p class="muted">No hay clientes activos.</p>';
+
+  // Tarea en curso
+  const running = state.tasks.find(t => t.status === 'running');
+  $('active').classList.toggle('hidden', !running);
+  $('reminder').classList.toggle('hidden', !(running && running.reminder));
+  if (running) {
+    const c = clientsById[running.client_id];
+    $('activeTitle').textContent = running.title;
+    $('activeClient').textContent = c?.name ?? '';
+    $('blockSize').textContent = c?.block_minutes ?? 15;
+    $('reminderTitle').textContent = running.title;
+    // segundos acumulados antes del segmento actual + segmento actual en vivo
+    const segStart = new Date(running.running_since).getTime();
+    const prev = running.seconds - Math.floor((Date.now() - segStart) / 1000);
+    tickBase = { prev: Math.max(0, prev), segStart, block: c?.block_minutes ?? 15, id: running.id };
+  } else tickBase = null;
+  tick();
+  renderPip();
+
+  // Pausadas
+  const paused = state.tasks.filter(t => t.status === 'paused');
+  $('paused').classList.toggle('hidden', !paused.length);
+  $('pausedList').innerHTML = paused.map(t => `<div class="client">
+      <div><strong>${esc(t.title)}</strong> <span class="pill">${esc(clientsById[t.client_id]?.name ?? '')}</span></div>
+      <div class="small muted">${fmtClock(t.seconds)} trabajado · se facturaría ${fmtHM(billed(t.seconds, clientsById[t.client_id]?.block_minutes ?? 15))}</div>
+      <div class="row" style="margin-top:8px">
+        <button data-resume="${t.id}">Reanudar</button>
+        <button class="secondary" data-finish="${t.id}">Terminar</button>
+      </div></div>`).join('');
+
+  if (!$('category').options.length) $('category').innerHTML = cfg.CATEGORIES.map(c => `<option>${esc(c)}</option>`).join('');
+  loadCatalog();
+  fillXClients();
+}
+
+// ───── GHL Projects: flujograma → tablero → tarea ─────
+let catalog = null, boardClients = {}, boardTasks = {};
+async function loadCatalog() {
+  if (catalog) return;
+  catalog = [];
+  const [{ data, error }, map] = await Promise.all([
+    sb.functions.invoke('project-tasks', { body: { action: 'catalog' } }),
+    sb.rpc('board_clients'),
+  ]);
+  boardClients = map.data ?? {};
+  if (error || data?.error) { $('space').innerHTML = '<option value="">No se pudo leer GHL Projects</option>'; return; }
+  catalog = data.spaces;
+  $('space').innerHTML = '<option value="">Elige el flujograma…</option>' +
+    catalog.map(sp => `<option value="${esc(sp.id)}">${esc(sp.name)}</option>`).join('');
+}
+$('space').addEventListener('change', () => {
+  const sp = catalog.find(x => x.id === $('space').value);
+  $('board').disabled = !sp;
+  $('board').innerHTML = sp ? '<option value="">Elige el tablero…</option>' +
+    sp.lists.map(l => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join('') : '<option value="">Elige primero el flujograma</option>';
+  resetTasks();
+});
+$('board').addEventListener('change', async () => {
+  const listId = $('board').value;
+  resetTasks();
+  if (!listId) return;
+  showBoardClient(listId);
+  loadBoardMembers(listId);
+  const sel = $('ghlTask');
+  sel.innerHTML = '<option value="">Cargando tareas…</option>';
+  const month = new Date().toISOString().slice(0, 7);
+  const { data, error } = await sb.functions.invoke('project-tasks', { body: { action: 'tasks', list_id: listId, month } });
+  if (error || data?.error) { sel.innerHTML = '<option value="">No se pudieron leer las tareas</option>'; return; }
+  renderBoardSummary(listId, data.summary);
+  boardTasks = {};
+  data.groups.forEach(g => g.tasks.forEach(t => boardTasks[t.id] = t));
+  sel.disabled = false;
+  sel.innerHTML = '<option value="">Elige la tarea…</option>' + data.groups.map(g =>
+    `<optgroup label="${esc(g.label)}">${g.tasks.map(t => `<option value="${esc(t.id)}">${esc(t.title)}</option>`).join('')}</optgroup>`).join('');
+});
+// Miembros con acceso al tablero en GHL. Si el usuario no tiene acceso, no puede cronometrar ahí.
+let boardAllowed = true;
+async function loadBoardMembers(listId) {
+  const box = $('boardMembers');
+  boardAllowed = true; box.textContent = 'Revisando quién tiene acceso al tablero…'; box.className = 'small muted';
+  const { data, error } = await sb.functions.invoke('project-tasks', { body: { action: 'board_members', list_id: listId } });
+  if ($('board').value !== listId) return;
+  if (error || data?.error) { box.textContent = 'No se pudo revisar el acceso al tablero.'; return; }
+  boardAllowed = data.allowed;
+  const names = data.users.map(u => esc(u.name)).join(', ');
+  box.innerHTML = (data.scope === 'public'
+      ? `👥 Tablero público: tienen acceso todos los usuarios de la subcuenta (${names}).`
+      : `👥 Miembros del tablero: ${names}.`) +
+    (data.allowed ? '' : '<br><strong class="warn-text">No tienes acceso a este tablero en GHL: pide que te asignen para poder cronometrar.</strong>');
+}
+
+// Horas del cliente (contador) y de las tarjetas del tablero (GHL)
+const fmtH = (h) => fmtHM(Math.round((h ?? 0) * 60));
+function renderBoardSummary(listId, sm) {
+  const box = $('boardSummary'), m = boardClients[listId];
+  const live = m && state.clients.find(c => c.client_id === m.client_id);
+  if (!live || !sm) { box.classList.add('hidden'); return; }
+  const leftIfEstimates = live.remaining - Math.round(sm.pending_estimated * 60);
+  const pct = live.available ? Math.min(100, live.consumed / live.available * 100) : 100;
+  box.innerHTML = `
+    <div class="sum-title">Bolsa del mes · ${esc(m.name)}</div>
+    <div class="bar ${live.remaining <= 0 ? 'danger' : live.remaining <= 120 ? 'warn' : ''}"><span style="width:${pct}%"></span></div>
+    <div class="sum-grid">
+      <div><span>Disponibles</span><b>${fmtHM(live.available)}</b></div>
+      <div><span>Usadas</span><b>${fmtHM(live.consumed)}</b></div>
+      <div><span>Quedan</span><b>${fmtHM(live.remaining)}</b></div>
+    </div>
+    <div class="sum-title" style="margin-top:12px">Según las tarjetas del tablero</div>
+    <div class="sum-grid">
+      <div><span>Horas reales este mes</span><b>${fmtH(sm.actual_month)}</b></div>
+      <div><span>Estimadas pendientes</span><b>${fmtH(sm.pending_estimated)}</b></div>
+      <div><span>Quedarían</span><b class="${leftIfEstimates < 0 ? 'neg' : ''}">${leftIfEstimates < 0 ? '−' : ''}${fmtHM(Math.abs(leftIfEstimates))}</b></div>
+    </div>
+    <div class="small muted" style="margin-top:6px">${sm.open_cards} tarjetas abiertas${sm.open_without_estimate ? ` · ${sm.open_without_estimate} sin horas estimadas` : ''}${leftIfEstimates < 0 ? ' · ⚠️ las estimaciones superan las horas que quedan: habrá que ampliar' : ''}</div>`;
+  box.classList.remove('hidden');
+}
+
+function resetTasks() {
+  $('ghlTask').disabled = true; $('ghlTask').innerHTML = '<option value="">Elige primero el tablero</option>';
+  $('taskHours').textContent = ''; $('boardSummary').classList.add('hidden'); $('boardMembers').textContent = '';
+  boardAllowed = true; showBoardClient($('board').value);
+}
+// El cliente sale del tablero. Si el tablero no tiene cliente, solo un admin lo asocia.
+function showBoardClient(listId) {
+  const info = $('clientInfo'), m = boardClients[listId];
+  $('client').value = ''; $('assignWrap').classList.add('hidden');
+  info.className = 'client-info';
+  if (!listId) { info.textContent = 'Elige el tablero'; info.classList.add('muted'); return; }
+  if (!m) {
+    info.textContent = 'Este tablero no está asociado a ningún cliente con bolsa de horas.';
+    info.classList.add('warn-text');
+    if (state.member.role === 'admin') openAssign();
+    return;
+  }
+  const live = state.clients.find(c => c.client_id === m.client_id);
+  if (!m.active || !live) { info.textContent = `${m.name} — inactivo en el contador`; info.classList.add('warn-text'); return; }
+  if (live.status !== 'open' || live.remaining <= 0) { info.textContent = `${m.name} — sin horas este mes`; info.classList.add('warn-text'); return; }
+  $('client').value = m.client_id;
+  info.innerHTML = `<strong>${esc(m.name)}</strong> · quedan ${fmtHM(live.remaining)}`;
+}
+async function openAssign() {
+  const { data } = await sb.rpc('all_clients');
+  $('assignClient').innerHTML = (data ?? []).map(c => `<option value="${c.client_id}">${esc(c.name)}${c.active ? '' : ' (inactivo)'}</option>`).join('');
+  $('assignWrap').classList.remove('hidden');
+}
+$('assignBtn').onclick = async () => {
+  const listId = $('board').value, sp = catalog.find(x => x.id === $('space').value);
+  await rpc('set_board_client', { p_list_id: listId, p_client_id: $('assignClient').value,
+    p_space_name: sp?.name ?? null, p_list_name: $('board').selectedOptions[0]?.textContent ?? null });
+  boardClients = (await sb.rpc('board_clients')).data ?? {};
+  showBoardClient(listId);
+};
+$('ghlTask').addEventListener('change', (e) => {
+  const t = boardTasks[e.target.value];
+  if (t) $('title').value = t.title;
+  $('taskHours').textContent = t ? `Horas estimadas: ${t.estimated ?? '—'} · Horas reales: ${t.actual ?? 0}` +
+    (t.estimated != null && (t.actual ?? 0) >= t.estimated ? ' · ⚠️ ya alcanzó lo estimado' : '') : '';
+});
+
+function tick() {
+  tickPip();
+  if (!tickBase) return;
+  const s = tickBase.prev + Math.floor((Date.now() - tickBase.segStart) / 1000);
+  $('clock').textContent = fmtClock(s);
+  $('billedPreview').textContent = fmtHM(billed(s, tickBase.block));
+}
+// ───── Ventana flotante (Document Picture-in-Picture: siempre encima) ─────
+let pip = null;
+const PAUSE_REASONS = ['Almuerzo / descanso', 'Reunión interna', 'Cambio a otro cliente', 'Esperando insumos del cliente', 'Fin de jornada', 'Otro'];
+const pipSupported = 'documentPictureInPicture' in window;
+
+async function openPip() {
+  if (!pipSupported) return showError('Tu navegador no permite la ventana flotante. Usa Google Chrome o Microsoft Edge.');
+  if (pip) { pip.focus(); return; }
+  pip = await documentPictureInPicture.requestWindow({ width: 320, height: 190 });
+  const link = pip.document.createElement('link');
+  link.rel = 'stylesheet'; link.href = new URL('styles.css', location.href).href;
+  pip.document.head.append(link);
+  pip.document.title = 'Contador';
+  pip.document.body.className = 'pip';
+  pip.document.body.innerHTML = `
+    <div id="pRun" class="hidden">
+      <div id="pStill" class="alert hidden" style="padding:6px 8px;margin-bottom:6px">¿Sigues? <button id="pYes" style="padding:4px 10px">Sí, sigo</button></div>
+      <div class="small muted" id="pClient"></div>
+      <div class="pip-title" id="pTitle"></div>
+      <div class="clock" id="pClock">00:00:00</div>
+      <div class="small muted">Se facturará <b id="pBilled"></b> · quedan <b id="pRemain"></b></div>
+      <div class="row" id="pBtns" style="margin-top:8px">
+        <button id="pPause" class="warn">Pausar</button>
+        <button id="pFinish">Terminar</button>
+      </div>
+      <div class="row hidden" id="pPauseBox" style="margin-top:8px">
+        <select id="pReason">${PAUSE_REASONS.map(r => `<option>${r}</option>`).join('')}</select>
+        <button id="pPauseOk" class="warn">OK</button>
+      </div>
+    </div>
+    <div id="pIdle" class="hidden">
+      <div class="pip-idle">⏸ Ningún temporizador corriendo</div>
+      <div id="pPaused"></div>
+      <button id="pOpen" class="secondary" style="margin-top:8px">Abrir el contador</button>
+    </div>`;
+  const $p = (id) => pip.document.getElementById(id);
+  $p('pPause').onclick = () => { $p('pBtns').classList.add('hidden'); $p('pPauseBox').classList.remove('hidden'); };
+  $p('pPauseOk').onclick = async () => {
+    await rpc('timer_pause', { p_task_id: tickBase.id, p_note: $p('pReason').value });
+    $p('pPauseBox').classList.add('hidden'); $p('pBtns').classList.remove('hidden');
+    await load();
+  };
+  // Terminar exige describir el entregable: se hace en la ventana principal.
+  $p('pFinish').onclick = () => { window.focus(); $('btnFinish').click(); };
+  $p('pOpen').onclick = () => window.focus();
+  $p('pYes').onclick = async () => { await rpc('timer_heartbeat', { p_task_id: tickBase.id }); await load(); };
+  $p('pPaused').onclick = async (e) => {
+    const id = e.target.dataset.resume; if (!id) return;
+    await rpc('timer_resume', { p_task_id: id }); await load();
+  };
+  pip.addEventListener('pagehide', () => { pip = null; });
+  renderPip();
+}
+
+function renderPip() {
+  if (!pip || !state) return;
+  const $p = (id) => pip.document.getElementById(id);
+  const running = state.tasks.find(t => t.status === 'running');
+  $p('pRun').classList.toggle('hidden', !running);
+  $p('pIdle').classList.toggle('hidden', !!running);
+  if (running) {
+    const c = state.clients.find(x => x.client_id === running.client_id);
+    $p('pClient').textContent = c?.name ?? '';
+    $p('pTitle').textContent = running.title;
+    $p('pRemain').textContent = fmtHM(c?.remaining ?? 0);
+    $p('pStill').classList.toggle('hidden', !running.reminder);
+  } else {
+    const paused = state.tasks.filter(t => t.status === 'paused').slice(0, 3);
+    $p('pPaused').innerHTML = paused.map(t =>
+      `<div class="row pip-paused"><span>${esc(t.title)}</span><button data-resume="${t.id}">▶</button></div>`).join('');
+  }
+  tickPip();
+}
+
+function tickPip() {
+  if (!pip || !tickBase) return;
+  const s = tickBase.prev + Math.floor((Date.now() - tickBase.segStart) / 1000);
+  pip.document.getElementById('pClock').textContent = fmtClock(s);
+  pip.document.getElementById('pBilled').textContent = fmtHM(billed(s, tickBase.block));
+}
+
+$('btnPip').onclick = openPip;
+
+// ───── Horas extra y accesos del cliente ─────
+const money = (n, cur = 'USD') => `${cur} ${Number(n ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+let xFilled = false;
+function fillXClients() {
+  if (xFilled || !state) return; xFilled = true;
+  $('xClient').innerHTML = state.clients.map(c => `<option value="${c.client_id}">${esc(c.name)}</option>`).join('');
+  loadX();
+}
+async function loadX() {
+  const cid = $('xClient').value; if (!cid) return;
+  const { data } = await sb.rpc('team_client_admin', { p_client_id: cid });
+  const st = { pending: '⏳ pendiente', approved: '✅ aceptada', rejected: '✖️ rechazada', cancelled: 'cancelada' };
+  $('xRequests').innerHTML = (data?.requests ?? []).map(r => `<div class="client small">
+      <strong>${r.hours} h · ${money(r.amount)}</strong> · ${st[r.status]}${r.decided_by ? ` por ${esc(r.decided_by)}` : ''}
+      <div class="muted">${esc(r.reason)}</div>
+      ${r.status === 'pending' ? `<button class="secondary" data-xcancel="${r.id}" style="margin-top:6px;padding:6px 10px">Cancelar</button>` : ''}
+    </div>`).join('') || '<p class="small muted">Sin solicitudes en los últimos 90 días.</p>';
+  const users = data?.users ?? [];
+  $('xUsers').innerHTML = `<div class="sum-title">Acceso al portal del cliente</div>` +
+    (users.map(u => `<div>${esc(u.name ?? '')} &lt;${esc(u.email)}&gt;</div>`).join('') || '<div class="muted">Nadie del cliente tiene acceso todavía.</div>') +
+    `<div class="muted" style="margin-top:4px">Portal: <a href="portal.html" target="_blank">${location.origin}${location.pathname.replace(/[^/]*$/, '')}portal.html</a></div>` +
+    (state.member.role === 'admin' ? `<form id="xUserForm" class="row" style="margin-top:8px">
+        <input id="xUserName" placeholder="Nombre" style="flex:1 1 140px">
+        <input id="xUserEmail" type="email" placeholder="correo@cliente.com" required style="flex:2 1 200px">
+        <button type="submit" class="secondary" style="flex:0 0 auto">Dar acceso</button></form>` : '');
+  const f = $('xUserForm');
+  if (f) f.onsubmit = async (e) => { e.preventDefault();
+    await rpc('set_client_user', { p_client_id: cid, p_email: $('xUserEmail').value, p_name: $('xUserName').value || null, p_remove: false });
+    loadX(); };
+  updateXPrice();
+}
+function updateXPrice() {
+  const c = state?.clients.find(x => x.client_id === $('xClient').value);
+  $('xPrice').textContent = c?.extra_hour_rate ? `Valor: ${money($('xHours').value * c.extra_hour_rate)} (${money(c.extra_hour_rate)}/h)` : '';
+}
+$('xClient').addEventListener('change', loadX);
+$('xHours').addEventListener('input', updateXPrice);
+$('xForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await rpc('request_extra_hours', { p_client_id: $('xClient').value, p_hours: Number($('xHours').value), p_reason: $('xReason').value });
+  $('xReason').value = ''; loadX();
+});
+$('xRequests').addEventListener('click', async (e) => {
+  const id = e.target.dataset.xcancel; if (!id) return;
+  await rpc('cancel_extra_request', { p_request_id: id }); loadX();
+});
+
+setInterval(tick, 1000);
+setInterval(() => state && load().catch(() => {}), 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && state) load().catch(() => {}); });
+
+// Acciones
+let finishTarget = null;
+$('startForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  // La ventana flotante debe abrirse dentro del mismo clic (regla del navegador).
+  const listId = $('board').value || null, clientId = $('client').value;
+  if (!clientId) { showError('Elige un tablero asociado a un cliente activo y con horas.'); return; }
+  if (!boardAllowed) { showError('No tienes acceso a este tablero en GHL.'); return; }
+  if (pipSupported && !pip) openPip().catch(() => {});
+  $('btnStart').disabled = true;
+  try {
+    const t = await rpc('timer_start', { p_client_id: clientId, p_title: $('title').value,
+      p_category: $('category').value, p_ghl_task_url: null, p_ghl_task_id: $('ghlTask').value || null });
+    if (listId) {
+      await sb.rpc('set_task_board', { p_task_id: t.id, p_list_id: listId });
+    }
+    $('title').value = ''; $('ghlTask').value = ''; $('taskHours').textContent = '';
+    await load();
+  } finally { $('btnStart').disabled = false; }
+});
+const showForm = (id) => { ['activeButtons', 'pauseForm', 'finishForm'].forEach(x => $(x).classList.toggle('hidden', x !== id)); };
+$('btnPause').onclick = () => showForm('pauseForm');
+$('btnFinish').onclick = () => { finishTarget = tickBase?.id; showForm('finishForm'); $('deliverable').focus(); };
+document.querySelectorAll('[data-cancel]').forEach(b => b.onclick = () => showForm('activeButtons'));
+$('pauseForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await rpc('timer_pause', { p_task_id: tickBase.id, p_note: $('pauseReason').value });
+  $('pauseReason').value = ''; showForm('activeButtons'); await load();
+});
+$('finishForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await rpc('timer_finish', { p_task_id: finishTarget, p_deliverable: $('deliverable').value });
+  $('deliverable').value = ''; showForm('activeButtons'); $('active').classList.add('hidden'); await load();
+});
+$('pausedList').addEventListener('click', async (e) => {
+  const r = e.target.dataset.resume, f = e.target.dataset.finish;
+  if (r) { await rpc('timer_resume', { p_task_id: r }); await load(); }
+  if (f) {
+    finishTarget = f;
+    $('active').classList.remove('hidden'); showForm('finishForm');
+    $('activeTitle').textContent = state.tasks.find(t => t.id === f)?.title ?? '';
+    $('deliverable').focus();
+  }
+});
+$('stillYes').onclick = async () => { await rpc('timer_heartbeat', { p_task_id: tickBase.id }); await load(); };
+
+// Sesión
+$('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const { error } = await sb.auth.signInWithOtp({ email: $('email').value, options: { emailRedirectTo: location.href.split('#')[0] } });
+  if (error) return showError(error);
+  $('loginSent').classList.remove('hidden');
+});
+$('logout').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+
+sb.auth.onAuthStateChange(async (_ev, session) => {
+  const logged = !!session;
+  $('login').classList.toggle('hidden', logged);
+  $('app').classList.toggle('hidden', !logged);
+  $('logout').classList.toggle('hidden', !logged);
+  $('btnPip').classList.toggle('hidden', !logged || !pipSupported);
+  if (logged) load().catch(() => {});
+});
+</script>
+</body>
+</html>

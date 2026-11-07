@@ -1,7 +1,7 @@
 {
   "name": "Contador de horas IeM",
   "short_name": "Contador",
-  "start_url": "./index.html",
+  "start_url": "./team.html",
   "display": "standalone",
   "background_color": "#f6f5f2",
   "theme_color": "#2f5d50",
