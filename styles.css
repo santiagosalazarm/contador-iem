@@ -75,3 +75,5 @@ body.pip select { padding: 7px 8px; font-size: 14px; }
 .sum-grid span { display: block; font-size: 12px; color: var(--muted); }
 .sum-grid b { font-size: 16px; font-variant-numeric: tabular-nums; }
 .sum-grid b.neg { color: var(--danger); }
+.sum-grid.sum-4 { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 560px) { .sum-grid.sum-4 { grid-template-columns: repeat(2, 1fr); } }

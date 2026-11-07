@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mis horas · Ideas en Movimiento</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+<main>
+  <header class="top">
+    <div>
+      <div class="small muted">Ideas en Movimiento® · Acompañamiento de marca</div>
+      <h1 id="title">Mis horas</h1>
+    </div>
+    <div class="row" style="flex:0 0 auto">
+      <select id="periodSel" class="hidden" style="width:auto"></select>
+      <button id="logout" class="secondary hidden">Salir</button>
+    </div>
+  </header>
+
+  <div id="msg" class="alert error hidden"></div>
+
+  <section id="login" class="card hidden">
+    <h2>Entrar</h2>
+    <p class="muted small">Escribe tu correo y te enviaremos un enlace para entrar.</p>
+    <form id="loginForm">
+      <label for="email">Correo</label>
+      <input id="email" type="email" required autocomplete="email">
+      <div style="margin-top:14px"><button type="submit">Enviar enlace</button></div>
+    </form>
+    <p id="loginSent" class="small hidden">Revisa tu correo y abre el enlace en este mismo dispositivo.</p>
+  </section>
+
+  <section id="portal" class="hidden">
+    <!-- Solicitudes pendientes -->
+    <section id="pending" class="card hidden" style="border-color: var(--warn)">
+      <h2>Solicitudes de horas extra</h2>
+      <div id="pendingList"></div>
+    </section>
+
+    <!-- Resumen -->
+    <section class="card">
+      <h2>Resumen del mes</h2>
+      <div class="sum-grid sum-4">
+        <div><span>Fee mensual</span><b id="fee"></b></div>
+        <div><span>Horas del plan</span><b id="plan"></b></div>
+        <div><span>Consumidas</span><b id="consumed"></b></div>
+        <div><span>Disponibles</span><b id="remaining"></b></div>
+      </div>
+      <div class="bar" id="bar" style="margin-top:14px"><span></span></div>
+      <div class="small muted" id="barText"></div>
+    </section>
+
+    <!-- Horas extra -->
+    <section class="card">
+      <h2>Horas extra del mes</h2>
+      <div class="sum-grid">
+        <div><span>Horas extra aprobadas</span><b id="extraHours"></b></div>
+        <div><span>Valor por hora</span><b id="rate"></b></div>
+        <div><span>Valor adicional a pagar</span><b id="extraAmount"></b></div>
+      </div>
+      <div id="history" class="small" style="margin-top:12px"></div>
+    </section>
+
+    <!-- En qué se consumieron -->
+    <section class="card">
+      <h2>¿En qué se usaron las horas?</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Fecha</th><th>Trabajo realizado</th><th class="num">Tiempo</th></tr></thead>
+          <tbody id="items"></tbody>
+          <tfoot><tr><th colspan="2">Total consumido</th><th class="num" id="itemsTotal"></th></tr></tfoot>
+        </table>
+      </div>
+      <p class="small muted">Cada tarea se registra en bloques de 15 minutos. Las horas del plan no se acumulan para el mes siguiente.</p>
+    </section>
+  </section>
+</main>
+<script>
+const cfg = window.CONTADOR_CONFIG;
+const sb = supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtHM = (min) => { const m = Math.max(0, Math.round(min)); const h = Math.floor(m / 60), r = m % 60;
+  return h ? (r ? `${h} h ${r} min` : `${h} h`) : `${r} min`; };
+const fmtHours = (h) => fmtHM(Number(h) * 60);
+const fmtDate = (d) => new Date(String(d).slice(0, 10) + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
+let data = null;
+
+function showError(e) {
+  $('msg').textContent = (e?.message || String(e)).replace(/^[A-Z_]+: /, '');
+  $('msg').classList.remove('hidden');
+  setTimeout(() => $('msg').classList.add('hidden'), 8000);
+}
+
+async function load(periodId) {
+  const { data: d, error } = await sb.rpc('client_portal', { p_period_id: periodId ?? null });
+  if (error) {
+    showError(/NO_AUTORIZADO/.test(error.message) ? 'Este correo no tiene acceso al portal. Escríbenos y te habilitamos.' : error);
+    return;
+  }
+  data = d; render();
+}
+
+function render() {
+  const money = (n) => `${data.currency} ${Number(n ?? 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+  const month = new Date(data.period.starts_on + 'T12:00:00').toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+  $('title').textContent = `${data.client} · ${month}`;
+
+  $('fee').textContent = data.monthly_fee != null ? money(data.monthly_fee) : '—';
+  $('plan').textContent = fmtHM(data.plan_minutes);
+  $('consumed').textContent = fmtHM(data.consumed);
+  $('remaining').textContent = fmtHM(data.remaining);
+  const pct = data.available ? Math.min(100, data.consumed / data.available * 100) : 100;
+  $('bar').className = 'bar' + (data.remaining <= 0 ? ' danger' : data.remaining <= 120 ? ' warn' : '');
+  $('bar').querySelector('span').style.width = pct + '%';
+  $('barText').textContent = `${fmtHM(data.consumed)} usadas de ${fmtHM(data.available)}` +
+    (data.extra_minutes ? ` (${fmtHM(data.plan_minutes)} del plan + ${fmtHM(data.extra_minutes)} extra)` : '');
+
+  $('extraHours').textContent = fmtHM(data.extra_minutes);
+  $('rate').textContent = money(data.extra_hour_rate);
+  $('extraAmount').textContent = money(data.extra_amount);
+
+  // Pendientes (solo el mes actual se puede decidir)
+  const pending = data.requests.filter(r => r.status === 'pending');
+  $('pending').classList.toggle('hidden', !pending.length);
+  $('pendingList').innerHTML = pending.map(r => `<div class="client">
+      <div><strong>${fmtHours(r.hours)} adicionales · ${money(r.amount)}</strong></div>
+      <div class="small">${esc(r.reason)}</div>
+      <div class="small muted">Solicitada el ${fmtDate(r.created_at)} · ${money(data.extra_hour_rate)} por hora</div>
+      <div class="row" style="margin-top:10px">
+        <button data-approve="${r.id}">Aceptar</button>
+        <button class="secondary" data-reject="${r.id}">Rechazar</button>
+      </div></div>`).join('');
+
+  const decided = data.requests.filter(r => r.status !== 'pending');
+  $('history').innerHTML = decided.length ? '<div class="sum-title">Historial de solicitudes</div>' + decided.map(r =>
+    `<div class="client">${fmtHours(r.hours)} · ${money(r.amount)} · ${r.status === 'approved' ? '✅ aceptada' : '✖️ rechazada'} el ${fmtDate(r.decided_at)}<div class="muted">${esc(r.reason)}</div></div>`).join('') : '';
+
+  let total = 0;
+  $('items').innerHTML = data.items.map(i => { total += i.minutes; return `<tr><td>${fmtDate(i.date)}</td>
+      <td><strong>${esc(i.title)}</strong>${i.deliverable ? `<div class="muted">${esc(i.deliverable)}</div>` : ''}</td>
+      <td class="num">${fmtHM(i.minutes)}</td></tr>`; }).join('') || '<tr><td colspan="3" class="muted">Aún no hay trabajo registrado este mes.</td></tr>';
+  $('itemsTotal').textContent = fmtHM(total);
+
+  const sel = $('periodSel');
+  sel.innerHTML = data.periods.map(p => `<option value="${p.id}" ${p.id === data.period.id ? 'selected' : ''}>${
+    new Date(p.starts_on + 'T12:00:00').toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })}</option>`).join('');
+  sel.classList.toggle('hidden', data.periods.length < 2);
+}
+
+$('pendingList').addEventListener('click', async (e) => {
+  const id = e.target.dataset.approve || e.target.dataset.reject; if (!id) return;
+  const approve = !!e.target.dataset.approve;
+  const r = data.requests.find(x => x.id === id);
+  if (approve && !confirmInline(e.target, `Confirmar: aceptar ${fmtHours(r.hours)} extra`)) return;
+  if (!approve && !confirmInline(e.target, 'Confirmar rechazo')) return;
+  e.target.disabled = true;
+  const { error } = await sb.rpc('client_decide_request', { p_request_id: id, p_approve: approve, p_note: null });
+  if (error) { showError(error); e.target.disabled = false; return; }
+  await load(data.period.id);
+});
+// Confirmación en dos clics (sin ventanas emergentes del navegador).
+function confirmInline(btn, text) {
+  if (btn.dataset.armed) return true;
+  btn.dataset.armed = '1'; btn.dataset.label = btn.textContent; btn.textContent = text;
+  setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = btn.dataset.label; } }, 5000);
+  return false;
+}
+$('periodSel').addEventListener('change', (e) => load(e.target.value));
+
+$('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const { error } = await sb.auth.signInWithOtp({ email: $('email').value, options: { emailRedirectTo: location.href.split('#')[0] } });
+  if (error) return showError(error);
+  $('loginSent').classList.remove('hidden');
+});
+$('logout').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+
+sb.auth.onAuthStateChange(async (_ev, session) => {
+  const logged = !!session;
+  $('login').classList.toggle('hidden', logged);
+  $('portal').classList.toggle('hidden', !logged);
+  $('logout').classList.toggle('hidden', !logged);
+  if (!logged) return;
+  const { data: who } = await sb.rpc('whoami');
+  if (who?.kind === 'member') { location.replace('index.html'); return; }
+  load();
+});
+</script>
+</body>
+</html>

@@ -122,6 +122,21 @@
       <h2>Saldo del mes</h2>
       <div id="clients"></div>
     </section>
+
+    <!-- Horas extra y accesos del cliente -->
+    <section class="card">
+      <h2>Horas extra y portal del cliente</h2>
+      <label for="xClient">Cliente</label>
+      <select id="xClient"></select>
+      <form id="xForm" class="row" style="margin-top:10px;align-items:flex-end">
+        <div style="flex:0 0 110px"><label for="xHours">Horas</label><input id="xHours" type="number" min="0.25" step="0.25" value="1" required></div>
+        <div style="flex:1 1 240px"><label for="xReason">Motivo (lo verá el cliente)</label><input id="xReason" required placeholder="Ej.: ajustes adicionales de la web solicitados"></div>
+        <div style="flex:0 0 auto"><button type="submit">Enviar solicitud</button></div>
+      </form>
+      <div class="small muted" id="xPrice"></div>
+      <div id="xRequests" style="margin-top:12px"></div>
+      <div id="xUsers" class="small" style="margin-top:12px"></div>
+    </section>
   </section>
 </main>
 
@@ -151,6 +166,8 @@ async function rpc(fn, args) {
 }
 
 async function load() {
+  const who = (await sb.rpc('whoami')).data;
+  if (who?.kind === 'client') { location.replace('portal.html'); return; }
   let { data, error } = await sb.rpc('dashboard');
   if (error && /NO_AUTORIZADO/.test(error.message)) {
     // Primera vez: alta automática si el correo es usuario de GHL en la subcuenta.
@@ -214,6 +231,7 @@ function render() {
 
   if (!$('category').options.length) $('category').innerHTML = cfg.CATEGORIES.map(c => `<option>${esc(c)}</option>`).join('');
   loadCatalog();
+  fillXClients();
 }
 
 // ───── GHL Projects: flujograma → tablero → tarea ─────
@@ -429,6 +447,53 @@ function tickPip() {
 }
 
 $('btnPip').onclick = openPip;
+
+// ───── Horas extra y accesos del cliente ─────
+const money = (n, cur = 'USD') => `${cur} ${Number(n ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+let xFilled = false;
+function fillXClients() {
+  if (xFilled || !state) return; xFilled = true;
+  $('xClient').innerHTML = state.clients.map(c => `<option value="${c.client_id}">${esc(c.name)}</option>`).join('');
+  loadX();
+}
+async function loadX() {
+  const cid = $('xClient').value; if (!cid) return;
+  const { data } = await sb.rpc('team_client_admin', { p_client_id: cid });
+  const st = { pending: '⏳ pendiente', approved: '✅ aceptada', rejected: '✖️ rechazada', cancelled: 'cancelada' };
+  $('xRequests').innerHTML = (data?.requests ?? []).map(r => `<div class="client small">
+      <strong>${r.hours} h · ${money(r.amount)}</strong> · ${st[r.status]}${r.decided_by ? ` por ${esc(r.decided_by)}` : ''}
+      <div class="muted">${esc(r.reason)}</div>
+      ${r.status === 'pending' ? `<button class="secondary" data-xcancel="${r.id}" style="margin-top:6px;padding:6px 10px">Cancelar</button>` : ''}
+    </div>`).join('') || '<p class="small muted">Sin solicitudes en los últimos 90 días.</p>';
+  const users = data?.users ?? [];
+  $('xUsers').innerHTML = `<div class="sum-title">Acceso al portal del cliente</div>` +
+    (users.map(u => `<div>${esc(u.name ?? '')} &lt;${esc(u.email)}&gt;</div>`).join('') || '<div class="muted">Nadie del cliente tiene acceso todavía.</div>') +
+    `<div class="muted" style="margin-top:4px">Portal: <a href="portal.html" target="_blank">${location.origin}${location.pathname.replace(/[^/]*$/, '')}portal.html</a></div>` +
+    (state.member.role === 'admin' ? `<form id="xUserForm" class="row" style="margin-top:8px">
+        <input id="xUserName" placeholder="Nombre" style="flex:1 1 140px">
+        <input id="xUserEmail" type="email" placeholder="correo@cliente.com" required style="flex:2 1 200px">
+        <button type="submit" class="secondary" style="flex:0 0 auto">Dar acceso</button></form>` : '');
+  const f = $('xUserForm');
+  if (f) f.onsubmit = async (e) => { e.preventDefault();
+    await rpc('set_client_user', { p_client_id: cid, p_email: $('xUserEmail').value, p_name: $('xUserName').value || null, p_remove: false });
+    loadX(); };
+  updateXPrice();
+}
+function updateXPrice() {
+  const c = state?.clients.find(x => x.client_id === $('xClient').value);
+  $('xPrice').textContent = c?.extra_hour_rate ? `Valor: ${money($('xHours').value * c.extra_hour_rate)} (${money(c.extra_hour_rate)}/h)` : '';
+}
+$('xClient').addEventListener('change', loadX);
+$('xHours').addEventListener('input', updateXPrice);
+$('xForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await rpc('request_extra_hours', { p_client_id: $('xClient').value, p_hours: Number($('xHours').value), p_reason: $('xReason').value });
+  $('xReason').value = ''; loadX();
+});
+$('xRequests').addEventListener('click', async (e) => {
+  const id = e.target.dataset.xcancel; if (!id) return;
+  await rpc('cancel_extra_request', { p_request_id: id }); loadX();
+});
 
 setInterval(tick, 1000);
 setInterval(() => state && load().catch(() => {}), 30000);
