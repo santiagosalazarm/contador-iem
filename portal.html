@@ -41,6 +41,23 @@
       <div id="pendingList"></div>
     </section>
 
+    <!-- Nueva solicitud de trabajo -->
+    <section class="card">
+      <h2>¿Qué necesitas?</h2>
+      <form id="reqForm">
+        <label for="reqTitle">Solicitud</label>
+        <input id="reqTitle" required maxlength="200" placeholder="Ej.: Banner de San Valentín para la web">
+        <label for="reqDesc">Detalles (opcional)</label>
+        <textarea id="reqDesc" maxlength="5000" placeholder="Medidas, textos, referencias, enlaces…"></textarea>
+        <div class="row" style="align-items:flex-end">
+          <div style="flex:0 0 200px"><label for="reqDate">¿Para cuándo? (opcional)</label><input id="reqDate" type="date"></div>
+          <div style="flex:0 0 auto"><button type="submit" id="reqBtn">Enviar solicitud</button></div>
+        </div>
+      </form>
+      <p id="reqOk" class="small hidden" style="color:var(--ok)">✅ Recibimos tu solicitud. La verás abajo y te avisaremos cuando avance.</p>
+      <div id="reqList" style="margin-top:12px"></div>
+    </section>
+
     <!-- Resumen -->
     <section class="card">
       <h2>Resumen del mes</h2>
@@ -172,6 +189,34 @@ function confirmInline(btn, text) {
 }
 $('periodSel').addEventListener('change', (e) => load(e.target.value));
 
+// ───── Solicitudes de trabajo (se crean como tarjetas en el tablero, estado "Solicitudes") ─────
+async function loadRequests() {
+  const { data, error } = await sb.functions.invoke('client-requests', { body: { action: 'list' } });
+  if (error || data?.error) return;
+  const cls = { to_do: '', doing: 'run', done: 'run', closed: 'run' };
+  $('reqList').innerHTML = data.requests.length ? '<div class="sum-title">Mis solicitudes</div>' + data.requests.map(r => `
+    <div class="client"><div class="row" style="justify-content:space-between;align-items:center">
+      <strong style="flex:1 1 auto">${esc(r.title)}</strong>
+      <span class="pill ${cls[r.group] ?? ''}" style="flex:0 0 auto">${esc(r.status)}</span></div>
+      <div class="small muted">Enviada el ${fmtDate(r.created_at)}${r.desired_date ? ` · para el ${fmtDate(r.desired_date)}` : ''}</div>
+    </div>`).join('') : '';
+}
+$('reqForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('reqBtn').disabled = true; $('reqOk').classList.add('hidden');
+  const { data, error } = await sb.functions.invoke('client-requests', { body: {
+    action: 'create', title: $('reqTitle').value, description: $('reqDesc').value, desired_date: $('reqDate').value || null } });
+  $('reqBtn').disabled = false;
+  if (error || data?.error) {
+    let msg = 'No pudimos registrar la solicitud. Intenta de nuevo.';
+    try { msg = (await error?.context?.json())?.error ?? data?.error ?? msg; } catch {}
+    return showError(msg);
+  }
+  $('reqTitle').value = ''; $('reqDesc').value = ''; $('reqDate').value = '';
+  $('reqOk').classList.remove('hidden');
+  loadRequests();
+});
+
 $('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const { error } = await sb.auth.signInWithOtp({ email: $('email').value, options: { emailRedirectTo: location.href.split('#')[0] } });
@@ -189,6 +234,7 @@ sb.auth.onAuthStateChange(async (_ev, session) => {
   const { data: who } = await sb.rpc('whoami');
   if (who?.kind === 'member') { location.replace('index.html'); return; }
   load();
+  loadRequests();
 });
 </script>
 </body>
