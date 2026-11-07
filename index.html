@@ -92,12 +92,12 @@
       <form id="startForm">
         <label for="client">Cliente</label>
         <select id="client" required></select>
-        <label for="title">Tarea</label>
-        <input id="title" required placeholder="Ej.: Banners Black Friday para Instagram">
+        <label for="ghlTask">Tarea del tablero en GHL Projects</label>
+        <select id="ghlTask"><option value="">Cargando tareas…</option></select>
+        <label for="title">Nombre de la tarea</label>
+        <input id="title" required placeholder="Se llena al elegir una tarea del tablero">
         <label for="category">Tipo</label>
         <select id="category"></select>
-        <label for="ghlUrl">Enlace a la tarea en GHL Projects (opcional)</label>
-        <input id="ghlUrl" type="url" placeholder="https://…">
         <div style="margin-top:14px"><button type="submit" id="btnStart">Iniciar</button></div>
       </form>
     </section>
@@ -188,8 +188,29 @@ function render() {
         <button class="secondary" data-finish="${t.id}">Terminar</button>
       </div></div>`).join('');
 
-  $('category').innerHTML = cfg.CATEGORIES.map(c => `<option>${esc(c)}</option>`).join('');
+  if (!$('category').options.length) $('category').innerHTML = cfg.CATEGORIES.map(c => `<option>${esc(c)}</option>`).join('');
+  loadBoard();
 }
+
+// Tareas del tablero de GHL Projects del cliente elegido
+let loadedTasksFor = null;
+async function loadBoard(force) {
+  const clientId = $('client').value;
+  if (!clientId || (!force && loadedTasksFor === clientId)) return;
+  loadedTasksFor = clientId;
+  const sel = $('ghlTask');
+  sel.innerHTML = '<option value="">Cargando tareas…</option>';
+  const { data, error } = await sb.functions.invoke('project-tasks', { body: { client_id: clientId } });
+  if (error || data?.error) { sel.innerHTML = '<option value="">No se pudo leer el tablero (escribe el nombre abajo)</option>'; return; }
+  if (!data.groups.length) { sel.innerHTML = '<option value="">Este cliente no tiene tablero (escribe el nombre abajo)</option>'; return; }
+  sel.innerHTML = '<option value="">Elige una tarea… (o escribe una nueva abajo)</option>' + data.groups.map(g =>
+    `<optgroup label="${esc(g.label)}">${g.tasks.map(t => `<option value="${esc(t.id)}">${esc(t.title)}</option>`).join('')}</optgroup>`).join('');
+}
+$('client').addEventListener('change', () => loadBoard());
+$('ghlTask').addEventListener('change', (e) => {
+  const opt = e.target.selectedOptions[0];
+  if (e.target.value) $('title').value = opt.textContent;
+});
 
 function tick() {
   if (!tickBase) return;
@@ -208,8 +229,8 @@ $('startForm').addEventListener('submit', async (e) => {
   $('btnStart').disabled = true;
   try {
     await rpc('timer_start', { p_client_id: $('client').value, p_title: $('title').value,
-      p_category: $('category').value, p_ghl_task_url: $('ghlUrl').value || null });
-    $('title').value = ''; $('ghlUrl').value = '';
+      p_category: $('category').value, p_ghl_task_url: null, p_ghl_task_id: $('ghlTask').value || null });
+    $('title').value = ''; $('ghlTask').value = '';
     await load();
   } finally { $('btnStart').disabled = false; }
 });
