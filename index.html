@@ -97,11 +97,13 @@
         <select id="space"><option value="">Cargando…</option></select>
         <label for="board">Tablero</label>
         <select id="board" disabled><option value="">Elige primero el flujograma</option></select>
-        <label for="client">Cliente (bolsa de horas)</label>
-        <select id="client" required></select>
-        <label class="small" id="rememberWrap" style="display:none;margin-top:6px">
-          <input type="checkbox" id="rememberBoard" checked style="width:auto"> Asociar siempre este tablero a este cliente
-        </label>
+        <label>Cliente (lo define el tablero)</label>
+        <div id="clientInfo" class="client-info muted">Elige el tablero</div>
+        <input type="hidden" id="client">
+        <div id="assignWrap" class="row hidden" style="margin-top:8px">
+          <select id="assignClient"></select>
+          <button type="button" id="assignBtn" class="secondary">Asociar tablero a este cliente</button>
+        </div>
         <label for="ghlTask">Tarea del tablero</label>
         <select id="ghlTask" disabled><option value="">Elige primero el tablero</option></select>
         <div class="small muted" id="taskHours"></div>
@@ -154,11 +156,7 @@ async function load() {
 function render() {
   const clientsById = Object.fromEntries(state.clients.map(c => [c.client_id, c]));
 
-  // Selector de cliente y saldos
-  const sel = $('client'); const cur = sel.value;
-  sel.innerHTML = '<option value="">Elige el cliente…</option>' + state.clients.map(c =>
-    `<option value="${c.client_id}" ${c.status !== 'open' || c.remaining <= 0 ? 'disabled' : ''}>${esc(c.name)}${c.status !== 'open' ? ' — sin horas' : ''}</option>`).join('');
-  if (cur) sel.value = cur;
+  // Saldos
   $('clients').innerHTML = state.clients.map(c => {
     const pct = c.available ? Math.min(100, c.consumed / c.available * 100) : 100;
     const cls = c.remaining <= 0 ? 'danger' : c.remaining <= 120 ? 'warn' : '';
@@ -230,10 +228,7 @@ $('board').addEventListener('change', async () => {
   const listId = $('board').value;
   resetTasks();
   if (!listId) return;
-  // Cliente asociado al tablero (si existe y está activo)
-  const mapped = boardClients[listId];
-  if (mapped && state.clients.some(c => c.client_id === mapped)) $('client').value = mapped;
-  updateRemember();
+  showBoardClient(listId);
   const sel = $('ghlTask');
   sel.innerHTML = '<option value="">Cargando tareas…</option>';
   const { data, error } = await sb.functions.invoke('project-tasks', { body: { action: 'tasks', list_id: listId } });
@@ -246,13 +241,38 @@ $('board').addEventListener('change', async () => {
 });
 function resetTasks() {
   $('ghlTask').disabled = true; $('ghlTask').innerHTML = '<option value="">Elige primero el tablero</option>';
-  $('taskHours').textContent = ''; updateRemember();
+  $('taskHours').textContent = ''; showBoardClient($('board').value);
 }
-function updateRemember() {
-  const listId = $('board').value, clientId = $('client').value;
-  $('rememberWrap').style.display = listId && clientId && boardClients[listId] !== clientId ? 'block' : 'none';
+// El cliente sale del tablero. Si el tablero no tiene cliente, solo un admin lo asocia.
+function showBoardClient(listId) {
+  const info = $('clientInfo'), m = boardClients[listId];
+  $('client').value = ''; $('assignWrap').classList.add('hidden');
+  info.className = 'client-info';
+  if (!listId) { info.textContent = 'Elige el tablero'; info.classList.add('muted'); return; }
+  if (!m) {
+    info.textContent = 'Este tablero no está asociado a ningún cliente con bolsa de horas.';
+    info.classList.add('warn-text');
+    if (state.member.role === 'admin') openAssign();
+    return;
+  }
+  const live = state.clients.find(c => c.client_id === m.client_id);
+  if (!m.active || !live) { info.textContent = `${m.name} — inactivo en el contador`; info.classList.add('warn-text'); return; }
+  if (live.status !== 'open' || live.remaining <= 0) { info.textContent = `${m.name} — sin horas este mes`; info.classList.add('warn-text'); return; }
+  $('client').value = m.client_id;
+  info.innerHTML = `<strong>${esc(m.name)}</strong> · quedan ${fmtHM(live.remaining)}`;
 }
-$('client').addEventListener('change', updateRemember);
+async function openAssign() {
+  const { data } = await sb.rpc('all_clients');
+  $('assignClient').innerHTML = (data ?? []).map(c => `<option value="${c.client_id}">${esc(c.name)}${c.active ? '' : ' (inactivo)'}</option>`).join('');
+  $('assignWrap').classList.remove('hidden');
+}
+$('assignBtn').onclick = async () => {
+  const listId = $('board').value, sp = catalog.find(x => x.id === $('space').value);
+  await rpc('set_board_client', { p_list_id: listId, p_client_id: $('assignClient').value,
+    p_space_name: sp?.name ?? null, p_list_name: $('board').selectedOptions[0]?.textContent ?? null });
+  boardClients = (await sb.rpc('board_clients')).data ?? {};
+  showBoardClient(listId);
+};
 $('ghlTask').addEventListener('change', (e) => {
   const t = boardTasks[e.target.value];
   if (t) $('title').value = t.title;
@@ -359,23 +379,17 @@ let finishTarget = null;
 $('startForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   // La ventana flotante debe abrirse dentro del mismo clic (regla del navegador).
+  const listId = $('board').value || null, clientId = $('client').value;
+  if (!clientId) { showError('Elige un tablero asociado a un cliente activo y con horas.'); return; }
   if (pipSupported && !pip) openPip().catch(() => {});
   $('btnStart').disabled = true;
   try {
-    const listId = $('board').value || null, clientId = $('client').value;
     const t = await rpc('timer_start', { p_client_id: clientId, p_title: $('title').value,
       p_category: $('category').value, p_ghl_task_url: null, p_ghl_task_id: $('ghlTask').value || null });
     if (listId) {
       await sb.rpc('set_task_board', { p_task_id: t.id, p_list_id: listId });
-      if ($('rememberWrap').style.display !== 'none' && $('rememberBoard').checked) {
-        const sp = catalog.find(x => x.id === $('space').value);
-        await sb.rpc('set_board_client', { p_list_id: listId, p_client_id: clientId,
-          p_space_name: sp?.name ?? null, p_list_name: $('board').selectedOptions[0]?.textContent ?? null });
-        boardClients[listId] = clientId;
-      }
     }
     $('title').value = ''; $('ghlTask').value = ''; $('taskHours').textContent = '';
-    updateRemember();
     await load();
   } finally { $('btnStart').disabled = false; }
 });

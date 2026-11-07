@@ -67,3 +67,5 @@ body.pip select { padding: 7px 8px; font-size: 14px; }
 .pip-paused { align-items: center; justify-content: space-between; margin-top: 6px; font-size: 13px; }
 .pip-paused span { flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pip-paused button { flex: 0 0 auto; padding: 4px 10px; }
+.client-info { padding: 11px 12px; border-radius: 10px; border: 1px dashed var(--line); }
+.warn-text { color: var(--warn); }
