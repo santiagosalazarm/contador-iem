@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Mi portal · Ideas en Movimiento</title>
-  <meta name="theme-color" content="#ee7623">
+  <meta name="theme-color" content="#254edf">
   <link rel="icon" href="favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -72,7 +72,7 @@
       <div id="msg" class="alert error hidden"></div>
 
       <!-- Solicitud de horas extra pendiente: visible en todas las pestañas -->
-      <section id="pending" class="card hidden" style="border-color: rgba(238,118,35,.45)">
+      <section id="pending" class="card hidden" style="border-color: rgba(37,78,223,.45)">
         <h2>⏳ Solicitud de horas extra por aprobar</h2>
         <div id="pendingList"></div>
       </section>
@@ -199,7 +199,7 @@ function render() {
   $('bar').className = 'bar' + (data.remaining <= 0 ? ' danger' : data.remaining <= 120 ? ' warn' : '');
   $('bar').querySelector('span').style.width = pct + '%';
   $('ring').style.setProperty('--p', Math.round(pct));
-  $('ring').style.setProperty('--c', data.remaining <= 0 ? 'var(--danger)' : data.remaining <= 60 ? 'var(--warn)' : 'var(--orange)');
+  $('ring').style.setProperty('--c', data.remaining <= 0 ? 'var(--danger)' : data.remaining <= 60 ? 'var(--warn)' : 'var(--primary)');
   $('ringPct').textContent = Math.round(pct) + '%';
   $('barText').textContent = `${fmtHM(data.consumed)} usadas de ${fmtHM(data.available)}` +
     (data.extra_minutes ? ` (${fmtHM(data.plan_minutes)} del plan + ${fmtHM(data.extra_minutes)} extra)` : '');
