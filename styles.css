@@ -46,7 +46,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .alert.error { border-color: var(--danger); color: var(--danger); }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 9px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+thead th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+tfoot th { font-size: 14px; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .table-wrap { overflow-x: auto; }
 .hidden { display: none !important; }
