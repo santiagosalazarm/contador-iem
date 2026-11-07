@@ -12,6 +12,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <script src="config.js"></script>
+  <script src="login.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -27,7 +28,8 @@
         <input id="email" type="email" required autocomplete="email" placeholder="tu@ideasenmovimiento.com.co">
         <div style="margin-top:18px"><button type="submit" style="width:100%">Enviar enlace</button></div>
       </form>
-      <p id="loginSent" class="small hidden">📩 Revisa tu correo y abre el enlace en este mismo dispositivo.</p>
+      <p id="loginSent" class="small hidden" style="color:var(--ok)"></p>
+      <div id="loginMsg" class="alert error hidden" style="margin:14px 0 0"></div>
       <p class="small muted" style="margin-top:18px">¿Eres cliente? <a href="index.html">Entra por aquí</a>.</p>
     </section>
   </div>
@@ -670,9 +672,12 @@ $('stillYes').onclick = async () => { await rpc('timer_heartbeat', { p_task_id: 
 // Sesión
 $('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const { error } = await sb.auth.signInWithOtp({ email: $('email').value, options: { emailRedirectTo: location.href.split('#')[0] } });
-  if (error) return showError(error);
-  $('loginSent').classList.remove('hidden');
+  const btn = e.submitter; if (btn) btn.disabled = true;
+  $('loginMsg').classList.add('hidden'); $('loginSent').classList.add('hidden');
+  const r = await requestAccessLink(sb, $('email').value, 'member');
+  if (btn) btn.disabled = false;
+  if (!r.ok) { $('loginMsg').textContent = r.text; $('loginMsg').classList.remove('hidden'); return; }
+  $('loginSent').textContent = r.text; $('loginSent').classList.remove('hidden');
 });
 $('logout').onclick = async () => { await sb.auth.signOut(); location.reload(); };
 

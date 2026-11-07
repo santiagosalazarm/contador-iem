@@ -12,6 +12,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <script src="config.js"></script>
+  <script src="login.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
   <style>
     .landing { max-width: 1080px; margin: 0 auto; padding: 22px 24px 48px; }
@@ -86,11 +87,11 @@ const base = location.href.split('#')[0].replace(/[^/]*$/, '');
 $('btnClient').onclick = () => { $('btnClient').classList.add('hidden'); $('loginBox').classList.remove('hidden'); $('email').focus(); };
 $('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  $('btnSend').disabled = true;
-  const { error } = await sb.auth.signInWithOtp({ email: $('email').value, options: { emailRedirectTo: base + 'portal.html' } });
+  $('btnSend').disabled = true; $('msg').classList.add('hidden'); $('loginSent').classList.add('hidden');
+  const r = await requestAccessLink(sb, $('email').value, 'client');
   $('btnSend').disabled = false;
-  if (error) { $('msg').textContent = error.message; $('msg').classList.remove('hidden'); return; }
-  $('loginSent').classList.remove('hidden');
+  if (!r.ok) { $('msg').textContent = r.text; $('msg').classList.remove('hidden'); return; }
+  $('loginSent').textContent = r.text; $('loginSent').classList.remove('hidden');
 });
 
 // Si ya hay sesión, cada quien va a su vista.
