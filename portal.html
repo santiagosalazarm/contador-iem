@@ -6,6 +6,7 @@
   <title>Mis horas · Ideas en Movimiento</title>
   <link rel="stylesheet" href="styles.css">
   <script src="config.js"></script>
+  <script src="business-days.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -44,6 +45,10 @@
     <!-- Nueva solicitud de trabajo -->
     <section class="card">
       <h2>¿Qué necesitas?</h2>
+      <div class="alert small" style="border-color:var(--line)">
+        🕐 Las solicitudes se atienden con <strong>24 horas de margen</strong>. Las que llegan un viernes, un fin de semana
+        o un festivo empiezan a ejecutarse el <strong>siguiente día hábil</strong> (normalmente el lunes, salvo festivo en Colombia).
+      </div>
       <form id="reqForm">
         <label for="reqTitle">Solicitud</label>
         <input id="reqTitle" required maxlength="200" placeholder="Ej.: Banner de San Valentín para la web">
@@ -54,7 +59,8 @@
           <div style="flex:0 0 auto"><button type="submit" id="reqBtn">Enviar solicitud</button></div>
         </div>
       </form>
-      <p id="reqOk" class="small hidden" style="color:var(--ok)">✅ Recibimos tu solicitud. La verás abajo y te avisaremos cuando avance.</p>
+      <p id="reqStart" class="small muted"></p>
+      <p id="reqOk" class="small hidden" style="color:var(--ok)"></p>
       <div id="reqList" style="margin-top:12px"></div>
     </section>
 
@@ -189,6 +195,18 @@ function confirmInline(btn, text) {
 }
 $('periodSel').addEventListener('change', (e) => load(e.target.value));
 
+// ───── Política de inicio: 24 h de margen y siguiente día hábil en Colombia ─────
+const fmtLong = (d) => new Date(String(d).slice(0, 10) + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
+function updateStartPreview() {
+  const start = BusinessDays.requestStartDate(new Date());
+  const desired = $('reqDate').value;
+  $('reqStart').innerHTML = `Si la envías ahora, empezaremos a trabajarla el <strong>${fmtLong(start)}</strong>.` +
+    (desired && desired < start ? ' <span class="warn-text">La fecha que elegiste es anterior: te confirmaremos si es posible.</span>' : '');
+}
+$('reqDate').addEventListener('input', updateStartPreview);
+setInterval(updateStartPreview, 60000);
+updateStartPreview();
+
 // ───── Solicitudes de trabajo (se crean como tarjetas en el tablero, estado "Solicitudes") ─────
 async function loadRequests() {
   const { data, error } = await sb.functions.invoke('client-requests', { body: { action: 'list' } });
@@ -198,7 +216,7 @@ async function loadRequests() {
     <div class="client"><div class="row" style="justify-content:space-between;align-items:center">
       <strong style="flex:1 1 auto">${esc(r.title)}</strong>
       <span class="pill ${cls[r.group] ?? ''}" style="flex:0 0 auto">${esc(r.status)}</span></div>
-      <div class="small muted">Enviada el ${fmtDate(r.created_at)}${r.desired_date ? ` · para el ${fmtDate(r.desired_date)}` : ''}</div>
+      <div class="small muted">Enviada el ${fmtDate(r.created_at)}${r.estimated_start ? ` · inicio estimado ${fmtLong(r.estimated_start)}` : ''}${r.desired_date ? ` · deseada para el ${fmtDate(r.desired_date)}` : ''}</div>
     </div>`).join('') : '';
 }
 $('reqForm').addEventListener('submit', async (e) => {
@@ -213,6 +231,7 @@ $('reqForm').addEventListener('submit', async (e) => {
     return showError(msg);
   }
   $('reqTitle').value = ''; $('reqDesc').value = ''; $('reqDate').value = '';
+  $('reqOk').textContent = `✅ Recibimos tu solicitud. Empezaremos a trabajarla el ${fmtLong(data.estimated_start)}. La verás abajo con su estado.`;
   $('reqOk').classList.remove('hidden');
   loadRequests();
 });
