@@ -100,6 +100,7 @@
         <label>Cliente (lo define el tablero)</label>
         <div id="clientInfo" class="client-info muted">Elige el tablero</div>
         <input type="hidden" id="client">
+        <div id="boardMembers" class="small muted" style="margin-top:6px"></div>
         <div id="boardSummary" class="board-summary hidden"></div>
         <div id="assignWrap" class="row hidden" style="margin-top:8px">
           <select id="assignClient"></select>
@@ -150,7 +151,19 @@ async function rpc(fn, args) {
 }
 
 async function load() {
-  state = await rpc('dashboard');
+  let { data, error } = await sb.rpc('dashboard');
+  if (error && /NO_AUTORIZADO/.test(error.message)) {
+    // Primera vez: alta automática si el correo es usuario de GHL en la subcuenta.
+    const j = await sb.functions.invoke('project-tasks', { body: { action: 'join' } });
+    if (j.error || j.data?.error) {
+      let msg = 'Tu correo no es usuario de GHL en la subcuenta de Ideas en Movimiento.';
+      try { msg = (await j.error?.context?.json())?.error ?? j.data?.error ?? msg; } catch {}
+      showError(msg); throw error;
+    }
+    ({ data, error } = await sb.rpc('dashboard'));
+  }
+  if (error) { showError(error); throw error; }
+  state = data;
   render();
 }
 
@@ -230,6 +243,7 @@ $('board').addEventListener('change', async () => {
   resetTasks();
   if (!listId) return;
   showBoardClient(listId);
+  loadBoardMembers(listId);
   const sel = $('ghlTask');
   sel.innerHTML = '<option value="">Cargando tareas…</option>';
   const month = new Date().toISOString().slice(0, 7);
@@ -242,6 +256,22 @@ $('board').addEventListener('change', async () => {
   sel.innerHTML = '<option value="">Elige la tarea…</option>' + data.groups.map(g =>
     `<optgroup label="${esc(g.label)}">${g.tasks.map(t => `<option value="${esc(t.id)}">${esc(t.title)}</option>`).join('')}</optgroup>`).join('');
 });
+// Miembros con acceso al tablero en GHL. Si el usuario no tiene acceso, no puede cronometrar ahí.
+let boardAllowed = true;
+async function loadBoardMembers(listId) {
+  const box = $('boardMembers');
+  boardAllowed = true; box.textContent = 'Revisando quién tiene acceso al tablero…'; box.className = 'small muted';
+  const { data, error } = await sb.functions.invoke('project-tasks', { body: { action: 'board_members', list_id: listId } });
+  if ($('board').value !== listId) return;
+  if (error || data?.error) { box.textContent = 'No se pudo revisar el acceso al tablero.'; return; }
+  boardAllowed = data.allowed;
+  const names = data.users.map(u => esc(u.name)).join(', ');
+  box.innerHTML = (data.scope === 'public'
+      ? `👥 Tablero público: tienen acceso todos los usuarios de la subcuenta (${names}).`
+      : `👥 Miembros del tablero: ${names}.`) +
+    (data.allowed ? '' : '<br><strong class="warn-text">No tienes acceso a este tablero en GHL: pide que te asignen para poder cronometrar.</strong>');
+}
+
 // Horas del cliente (contador) y de las tarjetas del tablero (GHL)
 const fmtH = (h) => fmtHM(Math.round((h ?? 0) * 60));
 function renderBoardSummary(listId, sm) {
@@ -270,7 +300,8 @@ function renderBoardSummary(listId, sm) {
 
 function resetTasks() {
   $('ghlTask').disabled = true; $('ghlTask').innerHTML = '<option value="">Elige primero el tablero</option>';
-  $('taskHours').textContent = ''; $('boardSummary').classList.add('hidden'); showBoardClient($('board').value);
+  $('taskHours').textContent = ''; $('boardSummary').classList.add('hidden'); $('boardMembers').textContent = '';
+  boardAllowed = true; showBoardClient($('board').value);
 }
 // El cliente sale del tablero. Si el tablero no tiene cliente, solo un admin lo asocia.
 function showBoardClient(listId) {
@@ -410,6 +441,7 @@ $('startForm').addEventListener('submit', async (e) => {
   // La ventana flotante debe abrirse dentro del mismo clic (regla del navegador).
   const listId = $('board').value || null, clientId = $('client').value;
   if (!clientId) { showError('Elige un tablero asociado a un cliente activo y con horas.'); return; }
+  if (!boardAllowed) { showError('No tienes acceso a este tablero en GHL.'); return; }
   if (pipSupported && !pip) openPip().catch(() => {});
   $('btnStart').disabled = true;
   try {
