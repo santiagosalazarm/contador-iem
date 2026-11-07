@@ -10,9 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261107b">
+  <link rel="stylesheet" href="styles.css?v=20261107c">
   <script src="config.js?v=20261107b"></script>
-  <script src="login.js?v=20261107b"></script>
+  <script src="login.js?v=20261107c"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -181,6 +181,58 @@
 
       <!-- ───── Pestaña: Clientes ───── -->
       <section class="panel hidden" data-panel="clients">
+        <div id="adminBar" class="row hidden" style="justify-content:space-between;align-items:center;margin-bottom:18px">
+          <div class="small muted" style="flex:1 1 auto">Como administrador puedes crear, editar, desactivar y eliminar clientes.</div>
+          <button id="btnNewClient" style="flex:0 0 auto">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            Nuevo cliente</button>
+        </div>
+
+        <section id="clientEditor" class="card hidden">
+          <h2 id="ceTitle">Nuevo cliente</h2>
+          <div class="grid-2" style="gap:24px">
+            <div>
+              <label for="ceSearch" style="margin-top:0">Contacto en GHL</label>
+              <input id="ceSearch" placeholder="Buscar por nombre, empresa o correo" autocomplete="off">
+              <div id="ceResults" class="small"></div>
+              <input type="hidden" id="ceContactId"><input type="hidden" id="ceContactName">
+              <label for="ceName">Nombre del cliente (empresa)</label>
+              <input id="ceName">
+              <div class="row">
+                <div style="flex:1 1 110px"><label for="ceFee">Fee mensual (USD)</label><input id="ceFee" type="number" min="0" step="1"></div>
+                <div style="flex:1 1 100px"><label for="ceHours">Horas del plan</label><input id="ceHours" type="number" min="0.25" step="0.25"></div>
+                <div style="flex:1 1 110px"><label for="ceRate">Hora extra (USD)</label><input id="ceRate" type="number" min="0" step="1"></div>
+              </div>
+              <div id="ceFlags" class="row" style="margin-top:16px">
+                <label style="flex:0 0 auto;margin:0;display:flex;gap:8px;align-items:center;color:var(--navy)"><input type="checkbox" id="ceActive"> Activo</label>
+                <label style="flex:0 0 auto;margin:0;display:flex;gap:8px;align-items:center;color:var(--navy)"><input type="checkbox" id="ceNotify"> Avisos al cliente (WhatsApp/correo)</label>
+              </div>
+              <div id="ceNewOnly">
+                <label for="ceEmail">Correo con acceso al portal</label>
+                <input id="ceEmail" type="email">
+                <label for="ceBoardNew">Tablero (opcional)</label>
+                <select id="ceBoardNew"></select>
+              </div>
+            </div>
+            <div id="ceEditOnly">
+              <div class="sum-title">Tableros asociados</div>
+              <div id="ceBoards" class="small" style="margin:8px 0 10px"></div>
+              <div class="row"><select id="ceBoardAdd"></select><button type="button" id="ceBoardAddBtn" class="secondary" style="flex:0 0 auto">Asociar</button></div>
+              <div class="sum-title" style="margin-top:22px">Acceso al portal</div>
+              <div id="ceUsers" class="small" style="margin:8px 0 10px"></div>
+              <div class="row">
+                <input id="ceUserEmail" type="email" placeholder="correo@cliente.com" style="flex:2 1 180px">
+                <button type="button" id="ceUserAdd" class="secondary" style="flex:0 0 auto">Dar acceso</button>
+              </div>
+              <div id="ceDanger" style="margin-top:26px"></div>
+            </div>
+          </div>
+          <div class="row" style="margin-top:22px;justify-content:flex-end">
+            <button type="button" id="ceCancel" class="secondary" style="flex:0 0 auto">Cancelar</button>
+            <button type="button" id="ceSave" style="flex:0 0 auto">Guardar</button>
+          </div>
+        </section>
+
         <div id="clients" class="grid-cards"></div>
       </section>
 
@@ -268,7 +320,8 @@ function render() {
         <div class="meta">${fmtHM(c.consumed)} usadas de ${fmtHM(c.available)}</div>
         <div style="margin-top:10px" class="row">
           <span class="pill ${c.status === 'open' ? 'run' : 'stop'}" style="flex:0 0 auto">${c.status === 'open' ? 'Activo' : 'Agotado'}</span>
-          ${state.member.role === 'admin' ? `<a href="informe.html?t=${c.report_token}" target="_blank" class="small" style="flex:0 0 auto;align-self:center">Ver informe →</a>` : ''}
+          ${state.member.role === 'admin' ? `<a href="informe.html?t=${c.report_token}" target="_blank" class="small" style="flex:0 0 auto;align-self:center">Ver informe →</a>
+            <button class="ghost small" data-edit="${c.client_id}" style="flex:0 0 auto;padding:4px 8px">Editar</button>` : ''}
         </div>
       </div></article>`;
   }).join('') || '<div class="card empty" style="grid-column:1/-1">No hay clientes activos.</div>';
@@ -308,6 +361,7 @@ function render() {
   if (!$('category').options.length) $('category').innerHTML = cfg.CATEGORIES.map(c => `<option>${esc(c)}</option>`).join('');
   loadCatalog();
   fillXClients();
+  if (currentTab === 'clients') loadAdminClients();
 }
 
 // ───── GHL Projects: flujograma → tablero → tarea ─────
@@ -561,12 +615,119 @@ function tickPip() {
 
 $('btnPip').onclick = openPip;
 
+// ───── Administración de clientes (solo admin) ─────
+let adminList = [], editing = null, currentTab = 'timer';
+const isAdmin = () => state?.member?.role === 'admin';
+async function loadAdminClients() {
+  if (!isAdmin()) return;
+  $('adminBar').classList.remove('hidden');
+  const { data, error } = await sb.rpc('admin_clients');
+  if (error) return showError(error);
+  adminList = data ?? [];
+  // Los inactivos también se ven para el admin, como tarjetas atenuadas.
+  const inactive = adminList.filter(c => !c.active);
+  document.querySelectorAll('[data-inactive]').forEach(el => el.remove());
+  $('clients').insertAdjacentHTML('beforeend', inactive.map(c => `<article class="card client-card" data-inactive style="opacity:.6">
+      <div class="ring" style="--p:0"><div><b>—</b><small>inactivo</small></div></div>
+      <div style="min-width:0;flex:1"><h3>${esc(c.name)}</h3><div class="meta">${c.plan_hours} h/mes · USD ${Number(c.monthly_fee ?? 0).toLocaleString('en-US')}</div>
+        <div style="margin-top:10px" class="row"><span class="pill stop" style="flex:0 0 auto">Inactivo</span>
+        <button class="ghost small" data-edit="${c.client_id}" style="flex:0 0 auto;padding:4px 8px">Editar</button></div></div></article>`).join(''));
+}
+function boardOptions(excludeMapped) {
+  const mapped = new Set(adminList.flatMap(c => c.boards.map(b => b.list_id)));
+  return (catalog ?? []).flatMap(sp => sp.lists.filter(l => !excludeMapped || !mapped.has(l.id))
+    .map(l => `<option value="${esc(l.id)}" data-space="${esc(sp.name)}" data-list="${esc(l.name)}">${esc(sp.name)} / ${esc(l.name)}</option>`)).join('');
+}
+function openEditor(id) {
+  editing = id ? adminList.find(c => c.client_id === id) : null;
+  const c = editing;
+  $('ceTitle').textContent = c ? `Editar · ${c.name}` : 'Nuevo cliente';
+  $('ceSearch').value = ''; $('ceResults').innerHTML = c ? `<div class="muted" style="margin-top:6px">Contacto actual en GHL: ${esc(c.ghl_contact_id)}. Busca solo si quieres cambiarlo.</div>` : '';
+  $('ceContactId').value = ''; $('ceContactName').value = '';
+  $('ceName').value = c?.name ?? ''; $('ceFee').value = c?.monthly_fee ?? 1250; $('ceHours').value = c?.plan_hours ?? 10; $('ceRate').value = c?.extra_hour_rate ?? 140;
+  $('ceActive').checked = c ? c.active : true; $('ceNotify').checked = c ? c.notify_client : false;
+  $('ceNewOnly').classList.toggle('hidden', !!c); $('ceEditOnly').classList.toggle('hidden', !c);
+  $('ceBoardNew').innerHTML = '<option value="">Sin tablero por ahora</option>' + boardOptions(true);
+  if (c) renderEditorLists();
+  $('clientEditor').classList.remove('hidden');
+  $('clientEditor').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function renderEditorLists() {
+  const c = editing;
+  $('ceBoards').innerHTML = c.boards.length ? c.boards.map(b => `<div class="client row" style="align-items:center"><span style="flex:1 1 auto">${esc(b.space ?? '')} / <strong>${esc(b.list ?? b.list_id)}</strong></span>
+      <button type="button" class="ghost small" data-unlink="${esc(b.list_id)}" style="flex:0 0 auto;padding:4px 8px">Quitar</button></div>`).join('') : '<div class="muted">Sin tableros.</div>';
+  $('ceBoardAdd').innerHTML = '<option value="">Elige un tablero…</option>' + boardOptions(true);
+  $('ceUsers').innerHTML = c.users.length ? c.users.map(u => `<div class="client row" style="align-items:center"><span style="flex:1 1 auto">${esc(u.name ?? '')} &lt;${esc(u.email)}&gt;</span>
+      <button type="button" class="ghost small" data-rmuser="${esc(u.email)}" style="flex:0 0 auto;padding:4px 8px">Quitar</button></div>`).join('') : '<div class="muted">Nadie del cliente tiene acceso.</div>';
+  $('ceDanger').innerHTML = c.has_history
+    ? '<div class="small muted">Este cliente ya tiene horas registradas: para retirarlo, desmarca <strong>Activo</strong> y guarda. Su historial se conserva.</div>'
+    : '<button type="button" class="danger" id="ceDelete">Eliminar cliente</button>';
+  const del = $('ceDelete');
+  if (del) del.onclick = async () => {
+    if (!del.dataset.armed) { del.dataset.armed = 1; del.textContent = 'Confirmar: eliminar definitivamente'; return; }
+    await rpc('delete_client', { p_client_id: c.client_id }); closeEditor(); await refreshClients();
+  };
+}
+function closeEditor() { $('clientEditor').classList.add('hidden'); editing = null; }
+async function refreshClients() { await load(); await loadAdminClients(); if (editing) { editing = adminList.find(c => c.client_id === editing.client_id); editing && renderEditorLists(); } }
+let ceTimer = null, ceFound = [];
+$('ceSearch').addEventListener('input', (e) => {
+  clearTimeout(ceTimer); const q = e.target.value.trim(); if (q.length < 2) return;
+  ceTimer = setTimeout(async () => {
+    const { data } = await sb.functions.invoke('project-tasks', { body: { action: 'search_contacts', q } });
+    ceFound = data?.contacts ?? [];
+    $('ceResults').innerHTML = ceFound.length ? ceFound.map((c, i) => `<div class="client" style="cursor:pointer" data-ce="${i}"><strong>${esc(c.company || c.name)}</strong>${c.company && c.name ? ` · ${esc(c.name)}` : ''}<div class="muted">${esc(c.email || 'sin correo')}</div></div>`).join('') : '<div class="muted" style="margin-top:6px">Sin resultados.</div>';
+  }, 350);
+});
+$('ceResults').addEventListener('click', (e) => {
+  const el = e.target.closest('[data-ce]'); if (!el) return;
+  const c = ceFound[Number(el.dataset.ce)];
+  $('ceContactId').value = c.id; $('ceContactName').value = c.name;
+  if (!editing) { $('ceName').value = c.company || c.name; $('ceEmail').value = c.email; }
+  $('ceResults').innerHTML = `<div class="muted" style="margin-top:6px">✔ Contacto: ${esc(c.name || c.company)} ${c.email ? '· ' + esc(c.email) : ''}</div>`;
+});
+$('btnNewClient').onclick = () => openEditor(null);
+$('ceCancel').onclick = closeEditor;
+$('clients').addEventListener('click', (e) => { const id = e.target.dataset.edit; if (id) openEditor(id); });
+$('ceSave').onclick = async () => {
+  $('ceSave').disabled = true;
+  try {
+    if (editing) {
+      await rpc('update_client', { p_client_id: editing.client_id, p_name: $('ceName').value, p_monthly_fee: Number($('ceFee').value || 0),
+        p_plan_hours: Number($('ceHours').value), p_extra_rate: Number($('ceRate').value), p_active: $('ceActive').checked,
+        p_notify_client: $('ceNotify').checked, p_contact_id: $('ceContactId').value || null });
+    } else {
+      if (!$('ceContactId').value) { showError('Elige el contacto de GHL en los resultados de búsqueda.'); return; }
+      const o = $('ceBoardNew').selectedOptions[0];
+      await rpc('create_client_for_board', { p_list_id: $('ceBoardNew').value || null, p_space_name: o?.dataset.space ?? null, p_list_name: o?.dataset.list ?? null,
+        p_name: $('ceName').value, p_contact_id: $('ceContactId').value, p_email: $('ceEmail').value, p_contact_name: $('ceContactName').value,
+        p_monthly_fee: Number($('ceFee').value || 0), p_plan_hours: Number($('ceHours').value), p_extra_rate: Number($('ceRate').value),
+        p_currency: 'USD', p_timezone: 'America/Bogota' });
+    }
+    closeEditor(); await refreshClients();
+    boardClients = (await sb.rpc('board_clients')).data ?? {};
+  } finally { $('ceSave').disabled = false; }
+};
+$('ceBoardAddBtn').onclick = async () => {
+  const o = $('ceBoardAdd').selectedOptions[0]; if (!$('ceBoardAdd').value) return;
+  await rpc('set_board_client', { p_list_id: $('ceBoardAdd').value, p_client_id: editing.client_id, p_space_name: o.dataset.space, p_list_name: o.dataset.list });
+  boardClients = (await sb.rpc('board_clients')).data ?? {}; await refreshClients();
+};
+$('ceBoards').addEventListener('click', async (e) => { const id = e.target.dataset.unlink; if (!id) return;
+  await rpc('unlink_board', { p_list_id: id }); boardClients = (await sb.rpc('board_clients')).data ?? {}; await refreshClients(); });
+$('ceUserAdd').onclick = async () => { const em = $('ceUserEmail').value.trim(); if (!em) return;
+  await rpc('set_client_user', { p_client_id: editing.client_id, p_email: em, p_name: null, p_remove: false }); $('ceUserEmail').value = ''; await refreshClients(); };
+$('ceUsers').addEventListener('click', async (e) => { const em = e.target.dataset.rmuser; if (!em) return;
+  await rpc('remove_client_user', { p_email: em }); await refreshClients(); });
+
 // ───── Pestañas ─────
 const TAB_TITLES = { timer: 'Cronómetro', clients: 'Clientes', extra: 'Horas extra' };
 function showTab(name) {
   document.querySelectorAll('.tab').forEach(t => { const on = t.dataset.tab === name; t.classList.toggle('active', on); t.setAttribute('aria-selected', on); });
   document.querySelectorAll('[data-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== name));
   $('pageTitle').textContent = TAB_TITLES[name];
+  currentTab = name;
+  if (name === 'clients') loadAdminClients();
   try { localStorage.setItem('progress.staff.tab', name); } catch {}
 }
 document.querySelectorAll('.tab').forEach(t => t.onclick = () => showTab(t.dataset.tab));

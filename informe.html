@@ -73,7 +73,7 @@ const fmtDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('es-CO', { d
     <div>Usadas<br><strong>${fmtHM(consumed)}</strong></div>
     <div>Restantes<br><strong>${fmtHM(Math.max(0, b.remaining))}</strong></div>`;
   if (r.status !== 'closed' && b.remaining <= 120) {
-    $('cta').innerHTML = `<a class="button" href="ampliar.html?t=${encodeURIComponent(r.client_token)}">Ampliar horas de este mes</a>`;
+    $('cta').innerHTML = `<a class="button" href="portal.html">Solicitar horas adicionales en mi portal</a>`;
     $('cta').classList.remove('hidden');
   }
   $('summary').classList.remove('hidden');
