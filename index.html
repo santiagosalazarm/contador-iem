@@ -14,7 +14,10 @@
 <main>
   <header class="top">
     <h1>Contador de horas · IeM</h1>
-    <button id="logout" class="secondary hidden">Salir</button>
+    <div class="row" style="flex:0 0 auto">
+      <button id="btnPip" class="secondary hidden" title="Abre un reloj que queda siempre encima de las demás ventanas">📌 Flotante</button>
+      <button id="logout" class="secondary hidden">Salir</button>
+    </div>
   </header>
 
   <div id="msg" class="alert error hidden"></div>
@@ -176,6 +179,7 @@ function render() {
     tickBase = { prev: Math.max(0, prev), segStart, block: c?.block_minutes ?? 15, id: running.id };
   } else tickBase = null;
   tick();
+  renderPip();
 
   // Pausadas
   const paused = state.tasks.filter(t => t.status === 'paused');
@@ -213,11 +217,95 @@ $('ghlTask').addEventListener('change', (e) => {
 });
 
 function tick() {
+  tickPip();
   if (!tickBase) return;
   const s = tickBase.prev + Math.floor((Date.now() - tickBase.segStart) / 1000);
   $('clock').textContent = fmtClock(s);
   $('billedPreview').textContent = fmtHM(billed(s, tickBase.block));
 }
+// ───── Ventana flotante (Document Picture-in-Picture: siempre encima) ─────
+let pip = null;
+const PAUSE_REASONS = ['Almuerzo / descanso', 'Reunión interna', 'Cambio a otro cliente', 'Esperando insumos del cliente', 'Fin de jornada', 'Otro'];
+const pipSupported = 'documentPictureInPicture' in window;
+
+async function openPip() {
+  if (!pipSupported) return showError('Tu navegador no permite la ventana flotante. Usa Google Chrome o Microsoft Edge.');
+  if (pip) { pip.focus(); return; }
+  pip = await documentPictureInPicture.requestWindow({ width: 320, height: 190 });
+  const link = pip.document.createElement('link');
+  link.rel = 'stylesheet'; link.href = new URL('styles.css', location.href).href;
+  pip.document.head.append(link);
+  pip.document.title = 'Contador';
+  pip.document.body.className = 'pip';
+  pip.document.body.innerHTML = `
+    <div id="pRun" class="hidden">
+      <div id="pStill" class="alert hidden" style="padding:6px 8px;margin-bottom:6px">¿Sigues? <button id="pYes" style="padding:4px 10px">Sí, sigo</button></div>
+      <div class="small muted" id="pClient"></div>
+      <div class="pip-title" id="pTitle"></div>
+      <div class="clock" id="pClock">00:00:00</div>
+      <div class="small muted">Se facturará <b id="pBilled"></b> · quedan <b id="pRemain"></b></div>
+      <div class="row" id="pBtns" style="margin-top:8px">
+        <button id="pPause" class="warn">Pausar</button>
+        <button id="pFinish">Terminar</button>
+      </div>
+      <div class="row hidden" id="pPauseBox" style="margin-top:8px">
+        <select id="pReason">${PAUSE_REASONS.map(r => `<option>${r}</option>`).join('')}</select>
+        <button id="pPauseOk" class="warn">OK</button>
+      </div>
+    </div>
+    <div id="pIdle" class="hidden">
+      <div class="pip-idle">⏸ Ningún temporizador corriendo</div>
+      <div id="pPaused"></div>
+      <button id="pOpen" class="secondary" style="margin-top:8px">Abrir el contador</button>
+    </div>`;
+  const $p = (id) => pip.document.getElementById(id);
+  $p('pPause').onclick = () => { $p('pBtns').classList.add('hidden'); $p('pPauseBox').classList.remove('hidden'); };
+  $p('pPauseOk').onclick = async () => {
+    await rpc('timer_pause', { p_task_id: tickBase.id, p_note: $p('pReason').value });
+    $p('pPauseBox').classList.add('hidden'); $p('pBtns').classList.remove('hidden');
+    await load();
+  };
+  // Terminar exige describir el entregable: se hace en la ventana principal.
+  $p('pFinish').onclick = () => { window.focus(); $('btnFinish').click(); };
+  $p('pOpen').onclick = () => window.focus();
+  $p('pYes').onclick = async () => { await rpc('timer_heartbeat', { p_task_id: tickBase.id }); await load(); };
+  $p('pPaused').onclick = async (e) => {
+    const id = e.target.dataset.resume; if (!id) return;
+    await rpc('timer_resume', { p_task_id: id }); await load();
+  };
+  pip.addEventListener('pagehide', () => { pip = null; });
+  renderPip();
+}
+
+function renderPip() {
+  if (!pip || !state) return;
+  const $p = (id) => pip.document.getElementById(id);
+  const running = state.tasks.find(t => t.status === 'running');
+  $p('pRun').classList.toggle('hidden', !running);
+  $p('pIdle').classList.toggle('hidden', !!running);
+  if (running) {
+    const c = state.clients.find(x => x.client_id === running.client_id);
+    $p('pClient').textContent = c?.name ?? '';
+    $p('pTitle').textContent = running.title;
+    $p('pRemain').textContent = fmtHM(c?.remaining ?? 0);
+    $p('pStill').classList.toggle('hidden', !running.reminder);
+  } else {
+    const paused = state.tasks.filter(t => t.status === 'paused').slice(0, 3);
+    $p('pPaused').innerHTML = paused.map(t =>
+      `<div class="row pip-paused"><span>${esc(t.title)}</span><button data-resume="${t.id}">▶</button></div>`).join('');
+  }
+  tickPip();
+}
+
+function tickPip() {
+  if (!pip || !tickBase) return;
+  const s = tickBase.prev + Math.floor((Date.now() - tickBase.segStart) / 1000);
+  pip.document.getElementById('pClock').textContent = fmtClock(s);
+  pip.document.getElementById('pBilled').textContent = fmtHM(billed(s, tickBase.block));
+}
+
+$('btnPip').onclick = openPip;
+
 setInterval(tick, 1000);
 setInterval(() => state && load().catch(() => {}), 30000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && state) load().catch(() => {}); });
@@ -274,6 +362,7 @@ sb.auth.onAuthStateChange(async (_ev, session) => {
   $('login').classList.toggle('hidden', logged);
   $('app').classList.toggle('hidden', !logged);
   $('logout').classList.toggle('hidden', !logged);
+  $('btnPip').classList.toggle('hidden', !logged || !pipSupported);
   if (logged) load().catch(() => {});
 });
 </script>
