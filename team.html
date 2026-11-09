@@ -10,9 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261109a">
-  <script src="config.js?v=20261109a"></script>
-  <script src="login.js?v=20261109a"></script>
+  <link rel="stylesheet" href="styles.css?v=20261109b">
+  <script src="config.js?v=20261109b"></script>
+  <script src="login.js?v=20261109b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -91,7 +91,7 @@
               <div class="small muted">Se facturará <strong id="billedPreview"></strong> · bloques de <span id="blockSize"></span> min</div>
               <div id="activeButtons" class="row" style="margin-top:20px">
                 <button id="btnPause" class="warn">Pausar</button>
-                <button id="btnFinish">Terminar</button>
+                <button id="btnFinish" title="La tarea se culminó: la tarjeta pasa a Por aprobar">Finalizar</button>
               </div>
               <form id="pauseForm" class="hidden">
                 <label for="pauseReason">¿Por qué pausas?</label>
@@ -112,8 +112,9 @@
               <form id="finishForm" class="hidden">
                 <label for="deliverable">¿Qué se entregó? (lo verá el cliente)</label>
                 <textarea id="deliverable" required></textarea>
+                <p class="small muted" style="margin:8px 0 0">Al finalizar, la tarjeta en GHL pasa a <strong>Por aprobar</strong>. Si solo vas a parar un rato, usa Pausar.</p>
                 <div class="row" style="margin-top:12px">
-                  <button type="submit">Terminar tarea</button>
+                  <button type="submit">Finalizar tarea</button>
                   <button type="button" class="secondary" data-cancel>Cancelar</button>
                 </div>
               </form>
@@ -372,7 +373,7 @@ function render() {
       <div class="small muted">${fmtClock(t.seconds)} trabajado · se facturaría ${fmtHM(billed(t.seconds, clientsById[t.client_id]?.block_minutes ?? 15))}</div>
       <div class="row" style="margin-top:8px">
         <button data-resume="${t.id}">Reanudar</button>
-        <button class="secondary" data-finish="${t.id}">Terminar</button>
+        <button class="secondary" data-finish="${t.id}">Finalizar</button>
       </div></div>`).join('');
 
   if (!$('category').options.length) $('category').innerHTML = cfg.CATEGORIES.map(c => `<option>${esc(c)}</option>`).join('');
@@ -572,7 +573,7 @@ async function openPip() {
       <div class="small muted">Se facturará <b id="pBilled"></b> · quedan <b id="pRemain"></b></div>
       <div class="row" id="pBtns" style="margin-top:8px">
         <button id="pPause" class="warn">Pausar</button>
-        <button id="pFinish">Terminar</button>
+        <button id="pFinish">Finalizar</button>
       </div>
       <div class="row hidden" id="pPauseBox" style="margin-top:8px">
         <select id="pReason">${PAUSE_REASONS.map(r => `<option>${r}</option>`).join('')}</select>
