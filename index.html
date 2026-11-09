@@ -10,9 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261107b">
-  <script src="config.js?v=20261107b"></script>
-  <script src="login.js?v=20261107b"></script>
+  <link rel="stylesheet" href="styles.css?v=20261109a">
+  <script src="config.js?v=20261109a"></script>
+  <script src="login.js?v=20261109a"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
   <style>
     .landing { max-width: 1080px; margin: 0 auto; padding: 22px 24px 48px; }
@@ -58,11 +58,14 @@
 
     <div id="loginBox" class="login-box card hidden">
       <h2 style="font-size:19px;margin:0 0 6px">Acceso de clientes</h2>
-      <p class="small muted" style="margin-top:0">Escribe tu correo y te enviaremos un enlace para entrar. No necesitas contraseña.</p>
+      <p class="small muted" style="margin-top:0">Entra con tu correo y tu clave. Si aún no tienes clave, pide el enlace por correo.</p>
       <form id="loginForm">
         <label for="email">Correo</label>
         <input id="email" type="email" required autocomplete="email" placeholder="tu@empresa.com">
-        <div style="margin-top:18px"><button type="submit" id="btnSend" style="width:100%">Enviar enlace</button></div>
+        <label for="password">Clave</label>
+        <input id="password" type="password" required autocomplete="current-password" placeholder="Tu clave">
+        <div style="margin-top:18px"><button type="submit" id="btnSend" style="width:100%">Entrar</button></div>
+        <button type="button" id="btnLink" class="secondary login-alt">No tengo clave · Recibir enlace por correo</button>
       </form>
       <p id="loginSent" class="small hidden">📩 Revisa tu correo y abre el enlace en este mismo dispositivo.</p>
       <div id="msg" class="alert error hidden" style="margin:12px 0 0"></div>
@@ -85,13 +88,13 @@ const $ = (id) => document.getElementById(id);
 const base = location.href.split('#')[0].replace(/[^/]*$/, '');
 
 $('btnClient').onclick = () => { $('btnClient').classList.add('hidden'); $('loginBox').classList.remove('hidden'); $('email').focus(); };
-$('loginForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  $('btnSend').disabled = true; $('msg').classList.add('hidden'); $('loginSent').classList.add('hidden');
-  const r = await requestAccessLink(sb, $('email').value, 'client');
-  $('btnSend').disabled = false;
-  if (!r.ok) { $('msg').textContent = r.text; $('msg').classList.remove('hidden'); return; }
-  $('loginSent').textContent = r.text; $('loginSent').classList.remove('hidden');
+wireLogin(sb, { form: 'loginForm', email: 'email', password: 'password', sendBtn: 'btnSend', linkBtn: 'btnLink',
+  okEl: 'loginSent', errEl: 'msg', here: 'client' });
+// Al entrar con clave, cada quien va a su vista.
+sb.auth.onAuthStateChange(async (ev) => {
+  if (ev !== 'SIGNED_IN') return;
+  const { data: who } = await sb.rpc('whoami');
+  location.replace(who?.kind === 'client' ? 'portal.html' : 'team.html');   // el equipo nuevo de GHL se da de alta en Staff
 });
 
 // Si ya hay sesión, cada quien va a su vista.

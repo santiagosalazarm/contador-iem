@@ -9,10 +9,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261107b">
-  <script src="config.js?v=20261107b"></script>
-  <script src="login.js?v=20261107b"></script>
-  <script src="business-days.js?v=20261107b"></script>
+  <link rel="stylesheet" href="styles.css?v=20261109a">
+  <script src="config.js?v=20261109a"></script>
+  <script src="login.js?v=20261109a"></script>
+  <script src="business-days.js?v=20261109a"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -22,11 +22,14 @@
       <img src="logo.svg" alt="Ideas en Movimiento" class="logo">
       <div class="eyebrow">Progress · Clientes</div>
       <h2>Entra a tu portal</h2>
-      <p class="muted small">Escribe tu correo y te enviaremos un enlace para entrar. No necesitas contraseña.</p>
+      <p class="muted small">Entra con tu correo y tu clave. Si aún no tienes clave, pide el enlace por correo.</p>
       <form id="loginForm">
         <label for="email">Correo</label>
         <input id="email" type="email" required autocomplete="email" placeholder="tu@empresa.com">
-        <div style="margin-top:18px"><button type="submit" style="width:100%">Enviar enlace</button></div>
+        <label for="password">Clave</label>
+        <input id="password" type="password" required autocomplete="current-password" placeholder="Tu clave">
+        <div style="margin-top:18px"><button type="submit" id="btnSend" style="width:100%">Entrar</button></div>
+        <button type="button" id="btnLink" class="secondary login-alt">No tengo clave · Recibir enlace por correo</button>
       </form>
       <p id="loginSent" class="small hidden" style="color:var(--ok)"></p>
       <div id="loginMsg" class="alert error hidden" style="margin:14px 0 0"></div>
@@ -65,6 +68,9 @@
         </div>
         <div class="row">
           <select id="periodSel" class="hidden" style="width:auto"></select>
+          <button id="btnAccount" class="secondary account-btn" title="Cambiar mi clave o salir">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+            Mi cuenta</button>
           <img src="logo.svg" alt="Ideas en Movimiento" style="height:42px">
         </div>
       </header>
@@ -309,15 +315,9 @@ $('reqForm').addEventListener('submit', async (e) => {
   loadRequests();
 });
 
-$('loginForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const btn = e.submitter; if (btn) btn.disabled = true;
-  $('loginMsg').classList.add('hidden'); $('loginSent').classList.add('hidden');
-  const r = await requestAccessLink(sb, $('email').value, 'client');
-  if (btn) btn.disabled = false;
-  if (!r.ok) { $('loginMsg').textContent = r.text; $('loginMsg').classList.remove('hidden'); return; }
-  $('loginSent').textContent = r.text; $('loginSent').classList.remove('hidden');
-});
+wireLogin(sb, { form: 'loginForm', email: 'email', password: 'password', sendBtn: 'btnSend', linkBtn: 'btnLink',
+  okEl: 'loginSent', errEl: 'loginMsg', here: 'client' });
+$('btnAccount').onclick = () => openAccountDialog(sb);
 $('logout').onclick = async () => { await sb.auth.signOut(); location.reload(); };
 
 sb.auth.onAuthStateChange(async (_ev, session) => {

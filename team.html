@@ -10,9 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261107c">
-  <script src="config.js?v=20261107b"></script>
-  <script src="login.js?v=20261107c"></script>
+  <link rel="stylesheet" href="styles.css?v=20261109a">
+  <script src="config.js?v=20261109a"></script>
+  <script src="login.js?v=20261109a"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -22,11 +22,14 @@
       <img src="logo.svg" alt="Ideas en Movimiento" class="logo">
       <div class="eyebrow">Progress · Staff</div>
       <h2>Acceso del equipo</h2>
-      <p class="muted small">Entra con tu correo de usuario de GHL. Te enviamos un enlace, sin contraseña.</p>
+      <p class="muted small">Entra con tu correo de usuario de GHL y tu clave. Si aún no tienes clave, pídesela a Santiago o Evelyn.</p>
       <form id="loginForm">
         <label for="email">Correo</label>
         <input id="email" type="email" required autocomplete="email" placeholder="tu@ideasenmovimiento.com.co">
-        <div style="margin-top:18px"><button type="submit" style="width:100%">Enviar enlace</button></div>
+        <label for="password">Clave</label>
+        <input id="password" type="password" required autocomplete="current-password" placeholder="Tu clave">
+        <div style="margin-top:18px"><button type="submit" id="btnSend" style="width:100%">Entrar</button></div>
+        <button type="button" id="btnLink" class="secondary login-alt">No tengo clave · Recibir enlace por correo</button>
       </form>
       <p id="loginSent" class="small hidden" style="color:var(--ok)"></p>
       <div id="loginMsg" class="alert error hidden" style="margin:14px 0 0"></div>
@@ -187,6 +190,20 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
             Nuevo cliente</button>
         </div>
+
+        <section id="accessAdmin" class="card hidden">
+          <h2>Claves de acceso</h2>
+          <p class="small muted" style="margin-top:0">Asigna una clave a alguien del equipo (usuario de GHL) o a un cliente con acceso al portal. Entra con su correo y esa clave, sin esperar ningún correo, y luego la cambia en “Mi cuenta”.</p>
+          <form id="accessForm" class="grid-2" style="gap:14px;align-items:end">
+            <div><label for="acEmail" style="margin-top:0">Correo</label>
+              <input id="acEmail" type="email" required placeholder="persona@ideasenmovimiento.com.co" autocomplete="off"></div>
+            <div><label for="acPass" style="margin-top:0">Clave temporal</label>
+              <div class="row"><input id="acPass" required minlength="8" autocomplete="off" style="flex:1 1 auto">
+              <button type="button" class="secondary" id="acGen" style="flex:0 0 auto">Generar</button></div></div>
+            <div><button type="submit" id="acSave">Asignar clave</button></div>
+          </form>
+          <div id="acMsg" class="small hidden" style="margin-top:12px"></div>
+        </section>
 
         <section id="clientEditor" class="card hidden">
           <h2 id="ceTitle">Nuevo cliente</h2>
@@ -615,12 +632,34 @@ function tickPip() {
 
 $('btnPip').onclick = openPip;
 
+// Claves de acceso (solo admin): no dependen de que llegue ningún correo.
+$('acGen').onclick = () => {
+  const abc = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const r = crypto.getRandomValues(new Uint32Array(10));
+  $('acPass').value = Array.from(r, n => abc[n % abc.length]).join('');
+};
+$('accessForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const m = $('acMsg'); m.classList.add('hidden');
+  $('acSave').disabled = true;
+  const email = $('acEmail').value.trim().toLowerCase(), password = $('acPass').value;
+  const { data, error } = await sb.functions.invoke('set-password', { body: { email, password } });
+  $('acSave').disabled = false;
+  let err = data?.error;
+  if (error) { try { err = (await error.context.json()).error; } catch { err = 'No pudimos asignar la clave.'; } }
+  if (err) { m.textContent = err; m.style.color = 'var(--danger)'; m.classList.remove('hidden'); return; }
+  m.textContent = `✅ Listo. ${email} ya puede entrar en progress.ideasenmovimiento.com.co${data.kind === 'member' ? '/team.html' : ''} con la clave ${password}. Compártesela por un canal privado; puede cambiarla en “Mi cuenta”.`;
+  m.style.color = 'var(--ok)'; m.classList.remove('hidden');
+  $('accessForm').reset();
+});
+
 // ───── Administración de clientes (solo admin) ─────
 let adminList = [], editing = null, currentTab = 'timer';
 const isAdmin = () => state?.member?.role === 'admin';
 async function loadAdminClients() {
   if (!isAdmin()) return;
   $('adminBar').classList.remove('hidden');
+  $('accessAdmin').classList.remove('hidden');
   const { data, error } = await sb.rpc('admin_clients');
   if (error) return showError(error);
   adminList = data ?? [];
@@ -831,15 +870,11 @@ $('pausedList').addEventListener('click', async (e) => {
 $('stillYes').onclick = async () => { await rpc('timer_heartbeat', { p_task_id: tickBase.id }); await load(); };
 
 // Sesión
-$('loginForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const btn = e.submitter; if (btn) btn.disabled = true;
-  $('loginMsg').classList.add('hidden'); $('loginSent').classList.add('hidden');
-  const r = await requestAccessLink(sb, $('email').value, 'member');
-  if (btn) btn.disabled = false;
-  if (!r.ok) { $('loginMsg').textContent = r.text; $('loginMsg').classList.remove('hidden'); return; }
-  $('loginSent').textContent = r.text; $('loginSent').classList.remove('hidden');
-});
+wireLogin(sb, { form: 'loginForm', email: 'email', password: 'password', sendBtn: 'btnSend', linkBtn: 'btnLink',
+  okEl: 'loginSent', errEl: 'loginMsg', here: 'member' });
+document.querySelector('.user-chip').classList.add('clickable');
+document.querySelector('.user-chip').title = 'Mi cuenta: cambiar mi clave';
+document.querySelector('.user-chip').onclick = () => openAccountDialog(sb);
 $('logout').onclick = async () => { await sb.auth.signOut(); location.reload(); };
 
 sb.auth.onAuthStateChange(async (_ev, session) => {
