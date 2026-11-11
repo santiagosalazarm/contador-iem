@@ -9,10 +9,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261109b">
-  <script src="config.js?v=20261109b"></script>
-  <script src="login.js?v=20261109b"></script>
-  <script src="business-days.js?v=20261109b"></script>
+  <link rel="stylesheet" href="styles.css?v=20261110a">
+  <script src="config.js?v=20261110a"></script>
+  <script src="login.js?v=20261110a"></script>
+  <script src="business-days.js?v=20261110a"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -144,7 +144,10 @@
       <!-- ───── Consumo ───── -->
       <section class="panel hidden" data-panel="usage">
         <section class="card">
-          <h2>¿En qué se usaron las horas?</h2>
+          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+            <h2 style="margin:0;flex:1 1 auto">¿En qué se usaron las horas?</h2>
+            <a id="reportLink" class="button secondary hidden" target="_blank" rel="noopener" style="flex:0 0 auto">Descargar informe (PDF / Excel)</a>
+          </div>
           <div class="table-wrap">
             <table>
               <thead><tr><th>Fecha</th><th>Trabajo realizado</th><th class="num">Tiempo</th></tr></thead>
@@ -236,6 +239,7 @@ function render() {
       <td><strong>${esc(i.title)}</strong>${i.deliverable ? `<div class="muted">${esc(i.deliverable)}</div>` : ''}</td>
       <td class="num">${fmtHM(i.minutes)}</td></tr>`; }).join('') || '<tr><td colspan="3" class="muted">Aún no hay trabajo registrado este mes.</td></tr>';
   $('itemsTotal').textContent = fmtHM(total);
+  if (data.report_token) { $('reportLink').href = `informe.html?t=${data.report_token}`; $('reportLink').classList.remove('hidden'); }
 
   const sel = $('periodSel');
   sel.innerHTML = data.periods.map(p => `<option value="${p.id}" ${p.id === data.period.id ? 'selected' : ''}>${
